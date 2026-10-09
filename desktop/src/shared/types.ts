@@ -823,6 +823,50 @@ export interface SoaResponse {
   meta: { generatedAt: string; basis: string };
 }
 
+// Receivables (matching api/src/routes/receivables.ts)
+// Named AgingBucketKey, distinct from the pre-existing AgingBucket interface
+// above (the {count, amount} shape) — this is the bucket label itself.
+export type AgingBucketKey = "current" | "1-30" | "31-60" | "61-90" | "90+";
+
+export interface OutstandingInvoiceRow {
+  invoiceId: number;
+  invoiceNumber: string;
+  status: string;
+  totalAmount: string;
+  allocated: string;
+  balance: string;
+  dueDate: string;
+  daysOverdue: number;
+  bucket: AgingBucketKey;
+  serviceAccountId: number;
+  subscriberId: number;
+}
+
+export interface ReceivableInvoicesResponse {
+  data: OutstandingInvoiceRow[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export interface AgingSummaryResponse {
+  data: {
+    buckets: Record<AgingBucketKey, { count: number; amount: string }>;
+    total: { count: number; amount: string };
+  };
+}
+
+export interface SuspensionCandidate {
+  serviceAccountId: number;
+  subscriberId: number;
+  overdueBalance: string;
+  overdueInvoiceCount: number;
+  oldestOverdueDays: number;
+  oldestOverdueInvoice: string;
+}
+
+export interface SuspensionCandidatesResponse {
+  data: SuspensionCandidate[];
+}
+
 // Backup & restore (matching api/src/routes/backup.ts). Owner-only.
 export type BackupStatus = "completed" | "verified" | "failed" | "restored";
 
@@ -1047,6 +1091,21 @@ export interface BcisDesktopApi {
     verify: (id: number) => Promise<BackupDetailResponse>;
     /** Restore a backup, replacing the live database. Requires explicit confirmation. */
     restore: (id: number) => Promise<BackupDetailResponse>;
+  };
+  receivables: {
+    /** Outstanding invoices with optional overdueOnly/bucket/account filters. */
+    getInvoices: (params: {
+      page?: number;
+      pageSize?: number;
+      serviceAccountId?: number;
+      subscriberId?: number;
+      overdueOnly?: boolean;
+      bucket?: AgingBucketKey;
+    }) => Promise<ReceivableInvoicesResponse>;
+    /** AR aging bucket totals. */
+    getAging: () => Promise<AgingSummaryResponse>;
+    /** Accounts with at least one overdue invoice, oldest-first. */
+    getSuspensionCandidates: () => Promise<SuspensionCandidatesResponse>;
   };
   reports: {
     /** Fetch a report as PDF/XLSX and prompt the user to save it. savedPath is null if the user cancels. */

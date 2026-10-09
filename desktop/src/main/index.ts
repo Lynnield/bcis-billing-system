@@ -57,6 +57,10 @@ import type {
   CreateCollectionBatchRequest,
   RemitBatchRequest,
   CollectionBatchStatus,
+  ReceivableInvoicesResponse,
+  AgingSummaryResponse,
+  SuspensionCandidatesResponse,
+  AgingBucketKey,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -124,6 +128,9 @@ const IPC_BACKUP_GET_LIST = "backup:get-list";
 const IPC_BACKUP_CREATE = "backup:create";
 const IPC_BACKUP_VERIFY = "backup:verify";
 const IPC_BACKUP_RESTORE = "backup:restore";
+const IPC_RECEIVABLES_GET_INVOICES = "receivables:get-invoices";
+const IPC_RECEIVABLES_GET_AGING = "receivables:get-aging";
+const IPC_RECEIVABLES_GET_SUSPENSION_CANDIDATES = "receivables:get-suspension-candidates";
 const IPC_REPORTS_EXPORT = "reports:export";
 const IPC_REPORTS_GET_LEDGER = "reports:get-ledger";
 const IPC_REPORTS_GET_SOA = "reports:get-soa";
@@ -1105,6 +1112,46 @@ function registerIpcHandlers(): void {
       token,
       body: { confirm: true },
     });
+  });
+
+  // Receivables API handlers
+  ipcMain.handle(IPC_RECEIVABLES_GET_INVOICES, async (_event, params: unknown): Promise<ReceivableInvoicesResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const p = params as {
+      page?: number;
+      pageSize?: number;
+      serviceAccountId?: number;
+      subscriberId?: number;
+      overdueOnly?: boolean;
+      bucket?: AgingBucketKey;
+    };
+    const query = new URLSearchParams();
+    if (p.page) query.set("page", String(p.page));
+    if (p.pageSize) query.set("pageSize", String(p.pageSize));
+    if (p.serviceAccountId) query.set("serviceAccountId", String(p.serviceAccountId));
+    if (p.subscriberId) query.set("subscriberId", String(p.subscriberId));
+    if (p.overdueOnly) query.set("overdueOnly", "true");
+    if (p.bucket) query.set("bucket", p.bucket);
+    return apiRequest<ReceivableInvoicesResponse>(`/api/v1/receivables/invoices?${query.toString()}`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_RECEIVABLES_GET_AGING, async (): Promise<AgingSummaryResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<AgingSummaryResponse>("/api/v1/receivables/aging", { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_RECEIVABLES_GET_SUSPENSION_CANDIDATES, async (): Promise<SuspensionCandidatesResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<SuspensionCandidatesResponse>("/api/v1/receivables/suspension-candidates", { method: "GET", token });
   });
 
   // Report export: fetches a binary PDF/XLSX from the API (not JSON, so it

@@ -68,6 +68,10 @@ import type {
   CreateCollectionBatchRequest,
   RemitBatchRequest,
   CollectionBatchStatus,
+  ReceivableInvoicesResponse,
+  AgingSummaryResponse,
+  SuspensionCandidatesResponse,
+  AgingBucketKey,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -220,6 +224,18 @@ const api: BcisDesktopApi = {
     create: (): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:create"),
     verify: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:verify", id),
     restore: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:restore", id),
+  },
+  receivables: {
+    getInvoices: (params: {
+      page?: number;
+      pageSize?: number;
+      serviceAccountId?: number;
+      subscriberId?: number;
+      overdueOnly?: boolean;
+      bucket?: AgingBucketKey;
+    }): Promise<ReceivableInvoicesResponse> => ipcRenderer.invoke("receivables:get-invoices", params),
+    getAging: (): Promise<AgingSummaryResponse> => ipcRenderer.invoke("receivables:get-aging"),
+    getSuspensionCandidates: (): Promise<SuspensionCandidatesResponse> => ipcRenderer.invoke("receivables:get-suspension-candidates"),
   },
   reports: {
     export: (request: ReportExportRequest): Promise<ReportExportResult> => ipcRenderer.invoke("reports:export", request),
