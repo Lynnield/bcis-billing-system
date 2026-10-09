@@ -1,0 +1,184 @@
+erDiagram
+    ROLES ||--o{ USER_ROLES : grants
+    USERS ||--o{ USER_ROLES : has
+    USERS ||--o{ SUBSCRIBER_STATUS_HISTORY : changes
+    USERS ||--o{ SUSPENSION_RECORDS : approves
+    USERS ||--o{ RECONNECTION_RECORDS : requests
+    USERS ||--o{ PAYMENTS : posts
+    USERS ||--o{ PAYMENT_REVERSALS : reverses
+    USERS ||--o{ INVOICE_ADJUSTMENTS : creates
+    USERS ||--o{ AUDIT_LOGS : performs
+    USERS ||--o{ BACKUP_HISTORY : creates
+
+    SUBSCRIBERS ||--o{ SUBSCRIBER_STATUS_HISTORY : has
+    SUBSCRIBERS ||--o{ SERVICE_ACCOUNTS : owns
+
+    SERVICES ||--o{ SERVICE_PLANS : offers
+    SERVICE_PLANS ||--o{ SERVICE_ACCOUNTS : priced_as
+
+    COLLECTION_AREAS ||--o{ COLLECTORS : covers
+    COLLECTION_AREAS ||--o{ SERVICE_ACCOUNTS : serves
+    COLLECTORS ||--o{ SERVICE_ACCOUNTS : assigned_to
+    COLLECTORS ||--o{ COLLECTION_BATCHES : runs
+
+    SERVICE_ACCOUNTS ||--o{ INVOICES : billed
+    SERVICE_ACCOUNTS ||--o{ PAYMENTS : pays
+    SERVICE_ACCOUNTS ||--o{ SUSPENSION_RECORDS : suspended
+    SERVICE_ACCOUNTS ||--o{ RECONNECTION_RECORDS : reconnected
+
+    BILLING_PERIODS ||--o{ INVOICES : covers
+
+    INVOICES ||--o{ INVOICE_LINE_ITEMS : contains
+    INVOICES ||--o{ INVOICE_ADJUSTMENTS : adjusts
+    INVOICES ||--o{ PAYMENT_ALLOCATIONS : receives
+
+    PAYMENTS ||--o{ PAYMENT_ALLOCATIONS : allocates
+    PAYMENTS ||--o| PAYMENT_REVERSALS : reversed_by
+    PAYMENTS ||--o| GCASH_PAYMENT_DETAILS : gcash_detail
+    PAYMENTS ||--o| COLLECTION_BATCH_PAYMENTS : collected_in
+
+    COLLECTION_BATCHES ||--o{ COLLECTION_BATCH_PAYMENTS : includes
+
+    USERS {
+        bigint id PK
+        varchar username UK
+        varchar email UK
+        text password_hash
+        varchar status
+    }
+    ROLES {
+        bigint id PK
+        varchar name UK
+    }
+    SUBSCRIBERS {
+        bigint id PK
+        varchar account_number UK
+        varchar first_name
+        varchar last_name
+        varchar status
+    }
+    SERVICES {
+        bigint id PK
+        varchar type
+        varchar name
+    }
+    SERVICE_PLANS {
+        bigint id PK
+        bigint service_id FK
+        varchar name
+        numeric price
+    }
+    COLLECTION_AREAS {
+        bigint id PK
+        varchar name UK
+    }
+    COLLECTORS {
+        bigint id PK
+        bigint collection_area_id FK
+        varchar full_name
+    }
+    SERVICE_ACCOUNTS {
+        bigint id PK
+        bigint subscriber_id FK
+        bigint plan_id FK
+        bigint collection_area_id FK
+        bigint assigned_collector_id FK
+        varchar service_number UK
+        varchar status
+    }
+    BILLING_PERIODS {
+        bigint id PK
+        varchar label UK
+        date period_start
+        date period_end
+        date due_date
+    }
+    INVOICES {
+        bigint id PK
+        varchar invoice_number UK
+        bigint service_account_id FK
+        bigint billing_period_id FK
+        varchar status
+        numeric total_amount
+    }
+    INVOICE_LINE_ITEMS {
+        bigint id PK
+        bigint invoice_id FK
+        varchar description
+        numeric amount
+    }
+    INVOICE_ADJUSTMENTS {
+        bigint id PK
+        bigint invoice_id FK
+        varchar type
+        numeric amount
+    }
+    PAYMENTS {
+        bigint id PK
+        bigint service_account_id FK
+        varchar method
+        numeric amount
+        varchar receipt_number UK
+        varchar status
+    }
+    PAYMENT_ALLOCATIONS {
+        bigint id PK
+        bigint payment_id FK
+        bigint invoice_id FK
+        numeric amount
+    }
+    PAYMENT_REVERSALS {
+        bigint id PK
+        bigint payment_id FK
+        text reason
+    }
+    GCASH_PAYMENT_DETAILS {
+        bigint id PK
+        bigint payment_id FK
+        varchar gcash_reference_number UK
+        varchar verification_status
+    }
+    COLLECTION_BATCHES {
+        bigint id PK
+        bigint collector_id FK
+        date batch_date
+        varchar status
+        numeric expected_amount
+        numeric remitted_amount
+        numeric shortage_amount
+        numeric overage_amount
+    }
+    COLLECTION_BATCH_PAYMENTS {
+        bigint batch_id FK
+        bigint payment_id FK
+    }
+    SUSPENSION_RECORDS {
+        bigint id PK
+        bigint service_account_id FK
+        text reason
+        bigint approved_by_user_id FK
+    }
+    RECONNECTION_RECORDS {
+        bigint id PK
+        bigint service_account_id FK
+        numeric fee
+        bigint technician_user_id FK
+        varchar status
+    }
+    AUDIT_LOGS {
+        bigint id PK
+        bigint actor_user_id FK
+        varchar action
+        varchar entity_type
+        bigint entity_id
+    }
+    APPLICATION_SETTINGS {
+        varchar key PK
+        text value
+    }
+    BACKUP_HISTORY {
+        bigint id PK
+        varchar filename
+        varchar status
+        varchar checksum_sha256
+    }
