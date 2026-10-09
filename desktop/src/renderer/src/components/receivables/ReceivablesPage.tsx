@@ -192,7 +192,7 @@ function SuspensionCandidatesTab() {
   });
 
   const suspendMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => suspendServiceAccount(id, reason),
+    mutationFn: ({ id, reason }: { id: number; reason: string }) => suspendServiceAccount(id, { reason }),
     onSuccess: (result) => {
       showSuccess("Service account suspended", result.message);
       queryClient.invalidateQueries({ queryKey: ["suspension-candidates"] });

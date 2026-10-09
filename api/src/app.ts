@@ -17,6 +17,7 @@ import collectionBatchRoutes from "./routes/collection-batches";
 import receivableRoutes from "./routes/receivables";
 import reportRoutes from "./routes/reports";
 import backupRoutes from "./routes/backup";
+import settingsRoutes from "./routes/settings";
 import type { AuthUser } from "./lib/auth";
 
 declare module "fastify" {
@@ -52,6 +53,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(receivableRoutes);
   await app.register(reportRoutes);
   await app.register(backupRoutes);
+  await app.register(settingsRoutes);
 
   return app;
 }

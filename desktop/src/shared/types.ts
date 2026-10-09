@@ -291,6 +291,63 @@ export interface ServiceAccountCollectionAssignmentRequest {
   collectorId?: number | null;
 }
 
+// Suspension & reconnection history (matching the suspension_records /
+// reconnection_records tables added for spec 3.10).
+export interface SuspensionRecord {
+  id: number;
+  serviceAccountId: number;
+  reason: string | null;
+  effectiveDate: string;
+  approvedByUserId: number | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface SuspensionHistoryResponse {
+  data: SuspensionRecord[];
+}
+
+export type ReconnectionRecordStatus = "requested" | "completed";
+
+export interface ReconnectionRecord {
+  id: number;
+  serviceAccountId: number;
+  fee: string;
+  technicianUserId: number | null;
+  requestDate: string;
+  completionDate: string | null;
+  status: ReconnectionRecordStatus;
+  notes: string | null;
+  requestedByUserId: number | null;
+  createdAt: string;
+}
+
+export interface ReconnectionHistoryResponse {
+  data: ReconnectionRecord[];
+}
+
+export interface SuspendServiceAccountRequest {
+  reason?: string;
+  notes?: string;
+}
+
+export interface ReconnectServiceAccountRequest {
+  reason?: string;
+  fee?: string;
+  technicianUserId?: number;
+  notes?: string;
+}
+
+// Collections settings (matching api/src/routes/settings.ts)
+export interface CollectionsSettings {
+  gracePeriodDays: number;
+  suspensionThresholdDays: number;
+}
+
+export interface CollectionsSettingsResponse {
+  data: CollectionsSettings;
+}
+
 // Service types (matching api/src/routes/services.ts)
 export type ServiceType = "internet" | "cable" | "combo";
 export type ServiceStatus = "active" | "inactive";
@@ -978,10 +1035,14 @@ export interface BcisDesktopApi {
     changeStatus: (id: number, data: ServiceAccountStatusChangeRequest) => Promise<ServiceAccountDetailResponse>;
     /** Update collection assignment */
     updateCollectionAssignment: (id: number, data: ServiceAccountCollectionAssignmentRequest) => Promise<ServiceAccountDetailResponse>;
-    /** Suspend service account */
-    suspend: (id: number, reason?: string) => Promise<ServiceAccountDetailResponse & { message?: string }>;
-    /** Reconnect service account */
-    reconnect: (id: number, reason?: string) => Promise<ServiceAccountDetailResponse & { message?: string }>;
+    /** Suspend service account; writes a suspension_records row */
+    suspend: (id: number, data: SuspendServiceAccountRequest) => Promise<ServiceAccountDetailResponse & { message?: string }>;
+    /** Reconnect service account; writes a reconnection_records row */
+    reconnect: (id: number, data: ReconnectServiceAccountRequest) => Promise<ServiceAccountDetailResponse & { message?: string }>;
+    /** Suspension history, newest first */
+    getSuspensionHistory: (id: number) => Promise<SuspensionHistoryResponse>;
+    /** Reconnection history, newest first */
+    getReconnectionHistory: (id: number) => Promise<ReconnectionHistoryResponse>;
   };
   services: {
     /** Get all services */
@@ -1091,6 +1152,12 @@ export interface BcisDesktopApi {
     verify: (id: number) => Promise<BackupDetailResponse>;
     /** Restore a backup, replacing the live database. Requires explicit confirmation. */
     restore: (id: number) => Promise<BackupDetailResponse>;
+  };
+  settings: {
+    /** Read the configurable grace period / suspension threshold. */
+    getCollections: () => Promise<CollectionsSettingsResponse>;
+    /** Update the configurable grace period / suspension threshold. Owner/Administrator only. */
+    updateCollections: (data: CollectionsSettings) => Promise<CollectionsSettingsResponse>;
   };
   receivables: {
     /** Outstanding invoices with optional overdueOnly/bucket/account filters. */

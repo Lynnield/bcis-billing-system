@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/Select";
 import { Pagination } from "@/components/ui/Pagination";
 import { Badge } from "@/components/ui/Badge";
 import { ServiceAccountForm } from "./ServiceAccountForm";
+import { ServiceAccountDetail as ServiceAccountDetailView } from "./ServiceAccountDetail";
 import { LedgerView } from "./LedgerView";
 import { StatementOfAccountView } from "./StatementOfAccountView";
 import { useToast } from "@/lib/toast";
@@ -14,6 +15,7 @@ import {
   Search,
   Plus,
   Eye,
+  Pencil,
   Loader2,
   BookOpen,
   Receipt,
@@ -54,6 +56,7 @@ export function ServiceAccountList() {
   } | undefined>(undefined);
   const [ledgerAccountId, setLedgerAccountId] = React.useState<number | null>(null);
   const [soaAccountId, setSoaAccountId] = React.useState<number | null>(null);
+  const [viewingAccountId, setViewingAccountId] = React.useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["service-accounts", page, pageSize, searchNumber, statusFilter, subscriberFilter, planFilter, areaFilter, collectorFilter],
@@ -70,13 +73,6 @@ export function ServiceAccountList() {
       }),
     placeholderData: (previous) => previous,
   });
-
-  if (ledgerAccountId !== null) {
-    return <LedgerView serviceAccountId={ledgerAccountId} onBack={() => setLedgerAccountId(null)} />;
-  }
-  if (soaAccountId !== null) {
-    return <StatementOfAccountView serviceAccountId={soaAccountId} onBack={() => setSoaAccountId(null)} />;
-  }
 
   const handleCreate = () => {
     setEditingAccount(undefined);
@@ -99,6 +95,18 @@ export function ServiceAccountList() {
   const handleSearch = React.useCallback(() => {
     setPage(1);
   }, []);
+
+  // All hooks above must run unconditionally on every render (Rules of
+  // Hooks) — these navigation early-returns come after the last one.
+  if (viewingAccountId !== null) {
+    return <ServiceAccountDetailView accountId={viewingAccountId} onBack={() => setViewingAccountId(null)} />;
+  }
+  if (ledgerAccountId !== null) {
+    return <LedgerView serviceAccountId={ledgerAccountId} onBack={() => setLedgerAccountId(null)} />;
+  }
+  if (soaAccountId !== null) {
+    return <StatementOfAccountView serviceAccountId={soaAccountId} onBack={() => setSoaAccountId(null)} />;
+  }
 
   if (isLoading && !data) {
     return (
@@ -268,6 +276,14 @@ export function ServiceAccountList() {
                       <Button
                         variant="outline"
                         size="icon"
+                        onClick={() => setViewingAccountId(account.id)}
+                        aria-label={`View ${account.serviceNumber}`}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
                         onClick={() => {
                           // Fetch full detail for editing
                           window.bcis.serviceAccounts.getById(account.id).then((res) => {
@@ -276,7 +292,7 @@ export function ServiceAccountList() {
                         }}
                         aria-label={`Edit ${account.serviceNumber}`}
                       >
-                        <Eye className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"

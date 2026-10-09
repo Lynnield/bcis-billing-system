@@ -404,6 +404,50 @@ export const auditLogs = pgTable("audit_logs", {
 ]);
 
 // ---------------------------------------------------------------------------
+// Suspension & reconnection (3.10)
+// ---------------------------------------------------------------------------
+
+export const reconnectionStatusEnum = pgEnum("reconnection_status", ["requested", "completed"]);
+
+export const suspensionRecords = pgTable("suspension_records", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  serviceAccountId: bigint("service_account_id", { mode: "number" }).notNull().references(() => serviceAccounts.id, { onDelete: "cascade" }),
+  reason: text("reason"),
+  effectiveDate: timestamp("effective_date", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  approvedByUserId: bigint("approved_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (t) => [
+  index("suspension_records_service_account_id_idx").on(t.serviceAccountId),
+]);
+
+export const reconnectionRecords = pgTable("reconnection_records", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  serviceAccountId: bigint("service_account_id", { mode: "number" }).notNull().references(() => serviceAccounts.id, { onDelete: "cascade" }),
+  fee: numeric("fee", { precision: 14, scale: 2 }).notNull().default("0"),
+  technicianUserId: bigint("technician_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  requestDate: timestamp("request_date", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  completionDate: timestamp("completion_date", { withTimezone: true, mode: "date" }),
+  status: reconnectionStatusEnum("status").notNull().default("completed"),
+  notes: text("notes"),
+  requestedByUserId: bigint("requested_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (t) => [
+  index("reconnection_records_service_account_id_idx").on(t.serviceAccountId),
+]);
+
+// ---------------------------------------------------------------------------
+// Application settings (3.10 configurable grace period / suspension threshold)
+// ---------------------------------------------------------------------------
+
+export const applicationSettings = pgTable("application_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+  updatedByUserId: bigint("updated_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+});
+
+// ---------------------------------------------------------------------------
 // Backup history
 // ---------------------------------------------------------------------------
 

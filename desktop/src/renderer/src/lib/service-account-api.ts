@@ -10,6 +10,10 @@ import type {
   ServiceAccountStatusChangeRequest,
   ServiceAccountCollectionAssignmentRequest,
   ServiceAccountStatus,
+  SuspendServiceAccountRequest,
+  ReconnectServiceAccountRequest,
+  SuspensionHistoryResponse,
+  ReconnectionHistoryResponse,
 } from "@/shared/types";
 
 export async function getServiceAccounts(params: {
@@ -54,14 +58,22 @@ export async function updateServiceAccountCollectionAssignment(
 
 export async function suspendServiceAccount(
   id: number,
-  reason?: string
+  data: SuspendServiceAccountRequest
 ): Promise<ServiceAccountDetailResponse & { message?: string }> {
-  return window.bcis.serviceAccounts.suspend(id, reason);
+  return window.bcis.serviceAccounts.suspend(id, data);
 }
 
 export async function reconnectServiceAccount(
   id: number,
-  reason?: string
+  data: ReconnectServiceAccountRequest
 ): Promise<ServiceAccountDetailResponse & { message?: string }> {
-  return window.bcis.serviceAccounts.reconnect(id, reason);
+  return window.bcis.serviceAccounts.reconnect(id, data);
+}
+
+export async function getSuspensionHistory(id: number): Promise<SuspensionHistoryResponse> {
+  return window.bcis.serviceAccounts.getSuspensionHistory(id);
+}
+
+export async function getReconnectionHistory(id: number): Promise<ReconnectionHistoryResponse> {
+  return window.bcis.serviceAccounts.getReconnectionHistory(id);
 }

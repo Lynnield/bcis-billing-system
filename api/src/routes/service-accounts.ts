@@ -6,10 +6,12 @@ import {
   auditLogs,
   collectionAreas,
   collectors,
+  reconnectionRecords,
   serviceAccounts,
   servicePlans,
   services,
   subscribers,
+  suspensionRecords,
 } from "../db/schema";
 import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
@@ -307,7 +309,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
   app.patch("/api/v1/service-accounts/:id/suspend", { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR)] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
-    const body = z.object({ reason: z.string().trim().max(1000).optional() }).strict().safeParse(request.body ?? {});
+    const body = z.object({ reason: z.string().trim().max(1000).optional(), notes: z.string().trim().max(2000).optional() }).strict().safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: "Invalid request body" });
 
     try {
@@ -323,6 +325,12 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
           throw new TransitionError(`Cannot suspend an account with status "${account.status}"`);
         }
         await tx.update(serviceAccounts).set({ status: "suspended" }).where(eq(serviceAccounts.id, account.id));
+        await tx.insert(suspensionRecords).values({
+          serviceAccountId: account.id,
+          reason: body.data.reason ?? null,
+          approvedByUserId: request.currentUser!.id,
+          notes: body.data.notes ?? null,
+        });
         await tx.insert(auditLogs).values({
           actorUserId: request.currentUser!.id,
           action: "service_account.suspend",
@@ -345,7 +353,12 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
   app.patch("/api/v1/service-accounts/:id/reconnect", { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR)] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
-    const body = z.object({ reason: z.string().trim().max(1000).optional() }).strict().safeParse(request.body ?? {});
+    const body = z.object({
+      reason: z.string().trim().max(1000).optional(),
+      fee: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid fee").optional(),
+      technicianUserId: z.number().int().positive().optional(),
+      notes: z.string().trim().max(2000).optional(),
+    }).strict().safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: "Invalid request body" });
 
     try {
@@ -361,12 +374,21 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
           throw new TransitionError(`Only a suspended account can be reconnected (current: "${account.status}")`);
         }
         await tx.update(serviceAccounts).set({ status: "active" }).where(eq(serviceAccounts.id, account.id));
+        await tx.insert(reconnectionRecords).values({
+          serviceAccountId: account.id,
+          fee: body.data.fee ?? "0.00",
+          technicianUserId: body.data.technicianUserId ?? null,
+          completionDate: new Date(),
+          status: "completed",
+          notes: body.data.notes ?? null,
+          requestedByUserId: request.currentUser!.id,
+        });
         await tx.insert(auditLogs).values({
           actorUserId: request.currentUser!.id,
           action: "service_account.reconnect",
           entityType: "service_account",
           entityId: account.id,
-          metadata: { previousStatus: account.status, newStatus: "active", reason: body.data.reason ?? null },
+          metadata: { previousStatus: account.status, newStatus: "active", reason: body.data.reason ?? null, fee: body.data.fee ?? "0.00" },
         });
         return account.status;
       });
@@ -378,6 +400,28 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
       if (err instanceof TransitionError) return reply.code(409).send({ message: err.message });
       throw err;
     }
+  });
+
+  app.get("/api/v1/service-accounts/:id/suspension-history", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
+    const rows = await db
+      .select()
+      .from(suspensionRecords)
+      .where(eq(suspensionRecords.serviceAccountId, params.data.id))
+      .orderBy(sql`${suspensionRecords.effectiveDate} desc`);
+    return reply.send({ data: rows });
+  });
+
+  app.get("/api/v1/service-accounts/:id/reconnection-history", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
+    const rows = await db
+      .select()
+      .from(reconnectionRecords)
+      .where(eq(reconnectionRecords.serviceAccountId, params.data.id))
+      .orderBy(sql`${reconnectionRecords.requestDate} desc`);
+    return reply.send({ data: rows });
   });
 }
 

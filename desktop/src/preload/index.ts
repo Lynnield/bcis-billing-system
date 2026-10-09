@@ -72,6 +72,12 @@ import type {
   AgingSummaryResponse,
   SuspensionCandidatesResponse,
   AgingBucketKey,
+  SuspendServiceAccountRequest,
+  ReconnectServiceAccountRequest,
+  SuspensionHistoryResponse,
+  ReconnectionHistoryResponse,
+  CollectionsSettingsResponse,
+  CollectionsSettings,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -129,10 +135,12 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("service-accounts:change-status", { id, data }),
     updateCollectionAssignment: (id: number, data: ServiceAccountCollectionAssignmentRequest): Promise<ServiceAccountDetailResponse> =>
       ipcRenderer.invoke("service-accounts:update-collection-assignment", { id, data }),
-    suspend: (id: number, reason?: string): Promise<ServiceAccountDetailResponse & { message?: string }> =>
-      ipcRenderer.invoke("service-accounts:suspend", { id, reason }),
-    reconnect: (id: number, reason?: string): Promise<ServiceAccountDetailResponse & { message?: string }> =>
-      ipcRenderer.invoke("service-accounts:reconnect", { id, reason }),
+    suspend: (id: number, data: SuspendServiceAccountRequest): Promise<ServiceAccountDetailResponse & { message?: string }> =>
+      ipcRenderer.invoke("service-accounts:suspend", { id, data }),
+    reconnect: (id: number, data: ReconnectServiceAccountRequest): Promise<ServiceAccountDetailResponse & { message?: string }> =>
+      ipcRenderer.invoke("service-accounts:reconnect", { id, data }),
+    getSuspensionHistory: (id: number): Promise<SuspensionHistoryResponse> => ipcRenderer.invoke("service-accounts:get-suspension-history", id),
+    getReconnectionHistory: (id: number): Promise<ReconnectionHistoryResponse> => ipcRenderer.invoke("service-accounts:get-reconnection-history", id),
   },
   services: {
     getList: (status?: ServiceStatus): Promise<ServiceListResponse> => ipcRenderer.invoke("services:get-list", status),
@@ -224,6 +232,11 @@ const api: BcisDesktopApi = {
     create: (): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:create"),
     verify: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:verify", id),
     restore: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:restore", id),
+  },
+  settings: {
+    getCollections: (): Promise<CollectionsSettingsResponse> => ipcRenderer.invoke("settings:get-collections"),
+    updateCollections: (data: CollectionsSettings): Promise<CollectionsSettingsResponse> =>
+      ipcRenderer.invoke("settings:update-collections", data),
   },
   receivables: {
     getInvoices: (params: {

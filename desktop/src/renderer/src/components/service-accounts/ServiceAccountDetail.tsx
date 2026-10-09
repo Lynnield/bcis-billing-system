@@ -1,11 +1,22 @@
+import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { Modal } from "@/components/ui/Modal";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useToast } from "@/lib/toast";
-import { getServiceAccountById } from "@/lib/service-account-api";
+import {
+  getServiceAccountById,
+  suspendServiceAccount,
+  reconnectServiceAccount,
+  getSuspensionHistory,
+  getReconnectionHistory,
+} from "@/lib/service-account-api";
 import type { ServiceAccountDetail, ServiceAccountStatus } from "@/shared/types";
-import { ArrowLeft, User, CreditCard, MapPin, Calendar, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
+import { ArrowLeft, User, CreditCard, MapPin, Calendar, AlertTriangle, RotateCcw, Loader2, History } from "lucide-react";
 
 const statusBadgeVariant: Record<ServiceAccountStatus, "default" | "success" | "warning" | "destructive" | "secondary"> = {
   active: "success",
@@ -38,25 +49,58 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
     enabled: !!accountId,
   });
 
+  const { data: suspensionHistoryData } = useQuery({
+    queryKey: ["suspension-history", accountId],
+    queryFn: () => getSuspensionHistory(accountId),
+    enabled: !!accountId,
+  });
+
+  const { data: reconnectionHistoryData } = useQuery({
+    queryKey: ["reconnection-history", accountId],
+    queryFn: () => getReconnectionHistory(accountId),
+    enabled: !!accountId,
+  });
+
+  const [suspendOpen, setSuspendOpen] = React.useState(false);
+  const [suspendReason, setSuspendReason] = React.useState("");
+  const [suspendNotes, setSuspendNotes] = React.useState("");
+  const [reconnectOpen, setReconnectOpen] = React.useState(false);
+  const [reconnectFee, setReconnectFee] = React.useState("0.00");
+  const [reconnectNotes, setReconnectNotes] = React.useState("");
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["service-account", accountId] });
+    queryClient.invalidateQueries({ queryKey: ["suspension-history", accountId] });
+    queryClient.invalidateQueries({ queryKey: ["reconnection-history", accountId] });
+  };
+
   const suspendMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) => window.bcis.serviceAccounts.suspend(id, reason),
+    mutationFn: () => suspendServiceAccount(accountId, { reason: suspendReason.trim() || undefined, notes: suspendNotes.trim() || undefined }),
     onSuccess: (data) => {
       showSuccess("Service account suspended", data.message);
-      queryClient.invalidateQueries({ queryKey: ["service-account", accountId] });
+      setSuspendOpen(false);
+      setSuspendReason("");
+      setSuspendNotes("");
+      invalidateAll();
     },
-    onError: (err: Error) => showError("Failed to suspend", err.message),
+    onError: (err: unknown) => showError("Failed to suspend", err instanceof Error ? err.message : "Unknown error"),
   });
 
   const reconnectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) => window.bcis.serviceAccounts.reconnect(id, reason),
+    mutationFn: () => reconnectServiceAccount(accountId, { fee: reconnectFee.trim() || "0.00", notes: reconnectNotes.trim() || undefined }),
     onSuccess: (data) => {
       showSuccess("Service account reconnected", data.message);
-      queryClient.invalidateQueries({ queryKey: ["service-account", accountId] });
+      setReconnectOpen(false);
+      setReconnectFee("0.00");
+      setReconnectNotes("");
+      invalidateAll();
     },
-    onError: (err: Error) => showError("Failed to reconnect", err.message),
+    onError: (err: unknown) => showError("Failed to reconnect", err instanceof Error ? err.message : "Unknown error"),
   });
 
   const account = accountData?.data;
+  const suspensionHistory = suspensionHistoryData?.data ?? [];
+  const reconnectionHistory = reconnectionHistoryData?.data ?? [];
 
   if (accountLoading) {
     return (
@@ -260,43 +304,19 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
           <div className="flex flex-wrap gap-3">
             <Button
               variant={canSuspend ? "destructive" : "outline"}
-              onClick={() => {
-                const reason = prompt("Reason for suspension (optional):");
-                if (reason !== null) suspendMutation.mutate({ id: accountId, reason });
-              }}
+              onClick={() => setSuspendOpen(true)}
               disabled={suspendMutation.isPending || !canSuspend}
             >
-              {suspendMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Suspending...
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="mr-2 h-4 w-4" />
-                  Suspend Account
-                </>
-              )}
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              Suspend Account
             </Button>
             <Button
               variant={canReconnect ? "default" : "outline"}
-              onClick={() => {
-                const reason = prompt("Reason for reconnection (optional):");
-                if (reason !== null) reconnectMutation.mutate({ id: accountId, reason });
-              }}
+              onClick={() => setReconnectOpen(true)}
               disabled={reconnectMutation.isPending || !canReconnect}
             >
-              {reconnectMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Reconnecting...
-                </>
-              ) : (
-                <>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reconnect Account
-                </>
-              )}
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reconnect Account
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -304,6 +324,144 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <History className="h-5 w-5 text-muted-foreground" />
+            Suspension &amp; Reconnection History
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <h4 className="text-sm font-medium mb-2">Suspensions</h4>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Effective Date</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {suspensionHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-4 text-muted-foreground text-sm">
+                      No suspensions recorded
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  suspensionHistory.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>{new Date(s.effectiveDate).toLocaleString()}</TableCell>
+                      <TableCell>{s.reason ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{s.notes ?? "—"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium mb-2">Reconnections</h4>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request Date</TableHead>
+                  <TableHead>Completion Date</TableHead>
+                  <TableHead>Fee</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reconnectionHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground text-sm">
+                      No reconnections recorded
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  reconnectionHistory.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>{new Date(r.requestDate).toLocaleString()}</TableCell>
+                      <TableCell>{r.completionDate ? new Date(r.completionDate).toLocaleString() : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">₱{r.fee}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{r.notes ?? "—"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Modal
+        open={suspendOpen}
+        onClose={() => !suspendMutation.isPending && setSuspendOpen(false)}
+        title="Suspend Service Account"
+        description="This records a suspension entry with your identity and timestamp for audit."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setSuspendOpen(false)} disabled={suspendMutation.isPending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => suspendMutation.mutate()} disabled={suspendMutation.isPending}>
+              {suspendMutation.isPending ? "Suspending..." : "Confirm Suspension"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Reason"
+            value={suspendReason}
+            onChange={(e) => setSuspendReason(e.target.value)}
+            placeholder="e.g. Two months overdue"
+          />
+          <Textarea
+            label="Notes"
+            value={suspendNotes}
+            onChange={(e) => setSuspendNotes(e.target.value)}
+            placeholder="Optional additional context"
+            rows={3}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={reconnectOpen}
+        onClose={() => !reconnectMutation.isPending && setReconnectOpen(false)}
+        title="Reconnect Service Account"
+        description="Records a completed reconnection with the fee collected, if any."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setReconnectOpen(false)} disabled={reconnectMutation.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={() => reconnectMutation.mutate()} disabled={reconnectMutation.isPending}>
+              {reconnectMutation.isPending ? "Reconnecting..." : "Confirm Reconnection"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Reconnection Fee"
+            inputMode="decimal"
+            value={reconnectFee}
+            onChange={(e) => setReconnectFee(e.target.value)}
+            placeholder="0.00"
+          />
+          <Textarea
+            label="Notes"
+            value={reconnectNotes}
+            onChange={(e) => setReconnectNotes(e.target.value)}
+            placeholder="e.g. Technician assigned, fee paid at office"
+            rows={3}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

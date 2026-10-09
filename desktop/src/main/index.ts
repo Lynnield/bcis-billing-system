@@ -61,6 +61,12 @@ import type {
   AgingSummaryResponse,
   SuspensionCandidatesResponse,
   AgingBucketKey,
+  SuspendServiceAccountRequest,
+  ReconnectServiceAccountRequest,
+  SuspensionHistoryResponse,
+  ReconnectionHistoryResponse,
+  CollectionsSettingsResponse,
+  CollectionsSettings,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -89,6 +95,10 @@ const IPC_SERVICE_ACCOUNTS_CHANGE_STATUS = "service-accounts:change-status";
 const IPC_SERVICE_ACCOUNTS_UPDATE_COLLECTION_ASSIGNMENT = "service-accounts:update-collection-assignment";
 const IPC_SERVICE_ACCOUNTS_SUSPEND = "service-accounts:suspend";
 const IPC_SERVICE_ACCOUNTS_RECONNECT = "service-accounts:reconnect";
+const IPC_SERVICE_ACCOUNTS_GET_SUSPENSION_HISTORY = "service-accounts:get-suspension-history";
+const IPC_SERVICE_ACCOUNTS_GET_RECONNECTION_HISTORY = "service-accounts:get-reconnection-history";
+const IPC_SETTINGS_GET_COLLECTIONS = "settings:get-collections";
+const IPC_SETTINGS_UPDATE_COLLECTIONS = "settings:update-collections";
 const IPC_SERVICES_GET_LIST = "services:get-list";
 const IPC_SERVICES_GET_BY_ID = "services:get-by-id";
 const IPC_SERVICES_CREATE = "services:create";
@@ -614,11 +624,11 @@ function registerIpcHandlers(): void {
     if (!token) {
       throw new Error("No valid session");
     }
-    const { id, reason } = payload as { id: number; reason?: string };
+    const { id, data } = payload as { id: number; data: SuspendServiceAccountRequest };
     return apiRequest<ServiceAccountDetailResponse & { message?: string }>(`/api/v1/service-accounts/${id}/suspend`, {
       method: "PATCH",
       token,
-      body: { reason },
+      body: data,
     });
   });
 
@@ -627,12 +637,28 @@ function registerIpcHandlers(): void {
     if (!token) {
       throw new Error("No valid session");
     }
-    const { id, reason } = payload as { id: number; reason?: string };
+    const { id, data } = payload as { id: number; data: ReconnectServiceAccountRequest };
     return apiRequest<ServiceAccountDetailResponse & { message?: string }>(`/api/v1/service-accounts/${id}/reconnect`, {
       method: "PATCH",
       token,
-      body: { reason },
+      body: data,
     });
+  });
+
+  ipcMain.handle(IPC_SERVICE_ACCOUNTS_GET_SUSPENSION_HISTORY, async (_event, id: unknown): Promise<SuspensionHistoryResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<SuspensionHistoryResponse>(`/api/v1/service-accounts/${id}/suspension-history`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_SERVICE_ACCOUNTS_GET_RECONNECTION_HISTORY, async (_event, id: unknown): Promise<ReconnectionHistoryResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<ReconnectionHistoryResponse>(`/api/v1/service-accounts/${id}/reconnection-history`, { method: "GET", token });
   });
 
   // Services API handlers
@@ -1111,6 +1137,27 @@ function registerIpcHandlers(): void {
       method: "POST",
       token,
       body: { confirm: true },
+    });
+  });
+
+  // Collections settings API handlers
+  ipcMain.handle(IPC_SETTINGS_GET_COLLECTIONS, async (): Promise<CollectionsSettingsResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionsSettingsResponse>("/api/v1/settings/collections", { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_SETTINGS_UPDATE_COLLECTIONS, async (_event, data: unknown): Promise<CollectionsSettingsResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionsSettingsResponse>("/api/v1/settings/collections", {
+      method: "PUT",
+      token,
+      body: data as CollectionsSettings,
     });
   });
 
