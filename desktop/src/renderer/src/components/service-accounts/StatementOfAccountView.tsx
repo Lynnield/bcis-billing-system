@@ -59,7 +59,7 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between no-print">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
@@ -143,7 +143,7 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
         </div>
       </div>
 
-      <div className="no-print">
+      <div className="print:hidden">
         <h3 className="font-medium mb-2">Recent Payments</h3>
         <div className="rounded-lg border">
           <Table>
@@ -179,11 +179,6 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

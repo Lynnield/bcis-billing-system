@@ -49,7 +49,7 @@ export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between no-print">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
@@ -103,11 +103,6 @@ export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
         </Table>
       </div>
 
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

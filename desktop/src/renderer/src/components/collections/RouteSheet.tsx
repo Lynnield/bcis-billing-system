@@ -63,7 +63,7 @@ export function RouteSheet({ collectorId, onBack }: RouteSheetProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between no-print">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
@@ -80,7 +80,7 @@ export function RouteSheet({ collectorId, onBack }: RouteSheetProps) {
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 no-print">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 print:hidden">
           <p className="font-medium text-destructive">Failed to build route sheet</p>
           <p className="text-sm text-muted-foreground mt-1">{error instanceof Error ? error.message : "Unknown error"}</p>
           <Button onClick={() => refetch()} className="mt-4" variant="outline">
@@ -130,11 +130,6 @@ export function RouteSheet({ collectorId, onBack }: RouteSheetProps) {
         </div>
       )}
 
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

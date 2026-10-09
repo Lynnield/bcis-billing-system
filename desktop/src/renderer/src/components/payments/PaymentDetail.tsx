@@ -12,7 +12,7 @@ import { getServiceAccountById } from "@/lib/service-account-api";
 import { getInvoiceById } from "@/lib/invoice-api";
 import { getGcashReviewPermission } from "@/lib/gcash-verification";
 import type { PaymentMethod, PaymentStatus, GcashVerificationStatus } from "@/shared/types";
-import { ArrowLeft, Receipt, User, FileText, Undo2, Loader2, AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
+import { ArrowLeft, Receipt, User, FileText, Undo2, Loader2, AlertTriangle, ShieldCheck, ShieldX, Printer } from "lucide-react";
 
 // Only these roles may reverse a posted payment, matching
 // api/src/routes/payments.ts REVERSE_ROLES. The backend is the authority —
@@ -189,14 +189,60 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Back to List
         </Button>
-        <Badge variant={paymentStatusBadge[payment.status]}>{payment.status}</Badge>
+        <div className="flex items-center gap-2">
+          {payment.status === "posted" && (
+            <Button variant="outline" onClick={() => window.print()} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print Receipt
+            </Button>
+          )}
+          <Badge variant={paymentStatusBadge[payment.status]}>{payment.status}</Badge>
+        </div>
       </div>
 
+      {/* Print-only clean receipt layout — hidden on screen, shown only when
+          printing (Layout.tsx already hides the sidebar/header on print). */}
+      {payment.status === "posted" && (
+        <div className="hidden print:block">
+          <div className="max-w-md mx-auto border rounded-lg p-8 space-y-4">
+            <div className="text-center space-y-1">
+              <h2 className="text-xl font-bold">Bukidnon Cable &amp; Internet Services</h2>
+              <p className="text-sm text-muted-foreground">Official Receipt</p>
+            </div>
+            <div className="border-t border-dashed" />
+            <dl className="text-sm space-y-2">
+              <div className="flex justify-between"><dt className="text-muted-foreground">Receipt #</dt><dd className="font-mono font-medium">{payment.receiptNumber ?? "—"}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Date</dt><dd>{new Date(payment.paymentDate).toLocaleDateString()}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Service Account</dt><dd className="font-mono">{account?.serviceNumber ?? payment.serviceAccountId}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Subscriber</dt><dd>{account ? `${account.subscriber.firstName} ${account.subscriber.lastName}` : "—"}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Method</dt><dd>{methodLabel[payment.method]}</dd></div>
+              {payment.referenceNumber && (
+                <div className="flex justify-between"><dt className="text-muted-foreground">Reference #</dt><dd className="font-mono">{payment.referenceNumber}</dd></div>
+              )}
+            </dl>
+            <div className="border-t border-dashed" />
+            <div className="flex justify-between text-lg font-bold">
+              <span>Amount Paid</span>
+              <span>₱{payment.amount}</span>
+            </div>
+            {Number(payment.unappliedAmount) > 0 && (
+              <p className="text-xs text-muted-foreground text-right">Includes ₱{payment.unappliedAmount} kept as advance/unapplied balance</p>
+            )}
+            <div className="border-t border-dashed pt-4 text-center text-xs text-muted-foreground">
+              This receipt confirms a posted, allocated payment. Thank you.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Everything below is the on-screen detail view; hidden entirely when
+          printing so only the receipt block above appears on paper. */}
+      <div className="print:hidden space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
@@ -528,6 +574,7 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
           disabled={rejectMutation.isPending}
         />
       </Modal>
+      </div>
     </div>
   );
 }

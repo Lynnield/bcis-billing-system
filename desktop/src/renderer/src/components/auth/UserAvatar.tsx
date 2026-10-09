@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/Button";
-import { LogOut, Loader2 } from "lucide-react";
+import { LogOut, Loader2, Lock } from "lucide-react";
 
 interface UserAvatarProps {
   user: {
@@ -9,10 +9,11 @@ interface UserAvatarProps {
     roles: string[];
   };
   onLogout: () => void;
+  onLock: () => void;
   isLoading?: boolean;
 }
 
-export function UserAvatar({ user, onLogout, isLoading }: UserAvatarProps) {
+export function UserAvatar({ user, onLogout, onLock, isLoading }: UserAvatarProps) {
   const initials = user.fullName
     .split(" ")
     .map((n) => n[0])
@@ -35,6 +36,9 @@ export function UserAvatar({ user, onLogout, isLoading }: UserAvatarProps) {
           </p>
         </div>
       </div>
+      <Button variant="ghost" size="icon" onClick={onLock} aria-label="Lock session" title="Lock session">
+        <Lock className="h-4 w-4" />
+      </Button>
       <Button
         variant="ghost"
         size="icon"

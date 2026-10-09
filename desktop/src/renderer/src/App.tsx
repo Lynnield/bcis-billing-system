@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { LockScreen } from "@/components/auth/LockScreen";
 import { Layout } from "@/components/ui/Layout";
 import { Dashboard } from "@/components/dashboard/Dashboard";
 import { SubscriberList } from "@/components/subscribers/SubscriberList";
@@ -54,7 +55,7 @@ function BillingPeriodsRoute() {
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isLocked } = useAuth();
 
   if (isLoading) {
     return (
@@ -66,6 +67,10 @@ function AppContent() {
 
   if (!isAuthenticated) {
     return <LoginForm />;
+  }
+
+  if (isLocked) {
+    return <LockScreen />;
   }
 
   return (
