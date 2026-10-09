@@ -7,12 +7,16 @@ import { Select } from "@/components/ui/Select";
 import { Pagination } from "@/components/ui/Pagination";
 import { Badge } from "@/components/ui/Badge";
 import { ServiceAccountForm } from "./ServiceAccountForm";
+import { LedgerView } from "./LedgerView";
+import { StatementOfAccountView } from "./StatementOfAccountView";
 import { useToast } from "@/lib/toast";
 import {
   Search,
   Plus,
   Eye,
   Loader2,
+  BookOpen,
+  Receipt,
 } from "lucide-react";
 import { getServiceAccounts } from "@/lib/service-account-api";
 import { ServiceAccountListItem, ServiceAccountDetail, ServiceAccountStatus } from "@/shared/types";
@@ -48,6 +52,8 @@ export function ServiceAccountList() {
     collectionAreaId?: number;
     assignedCollectorId?: number;
   } | undefined>(undefined);
+  const [ledgerAccountId, setLedgerAccountId] = React.useState<number | null>(null);
+  const [soaAccountId, setSoaAccountId] = React.useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["service-accounts", page, pageSize, searchNumber, statusFilter, subscriberFilter, planFilter, areaFilter, collectorFilter],
@@ -64,6 +70,13 @@ export function ServiceAccountList() {
       }),
     placeholderData: (previous) => previous,
   });
+
+  if (ledgerAccountId !== null) {
+    return <LedgerView serviceAccountId={ledgerAccountId} onBack={() => setLedgerAccountId(null)} />;
+  }
+  if (soaAccountId !== null) {
+    return <StatementOfAccountView serviceAccountId={soaAccountId} onBack={() => setSoaAccountId(null)} />;
+  }
 
   const handleCreate = () => {
     setEditingAccount(undefined);
@@ -264,6 +277,22 @@ export function ServiceAccountList() {
                         aria-label={`Edit ${account.serviceNumber}`}
                       >
                         <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setLedgerAccountId(account.id)}
+                        aria-label={`Ledger for ${account.serviceNumber}`}
+                      >
+                        <BookOpen className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setSoaAccountId(account.id)}
+                        aria-label={`Statement of account for ${account.serviceNumber}`}
+                      >
+                        <Receipt className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>
