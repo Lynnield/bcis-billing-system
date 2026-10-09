@@ -19,6 +19,24 @@ typecheck/tests alone for anything visual.
   must be force-killed by PID/tree afterward, or you end up screenshotting a stale
   orphaned window instead of your fresh one.
 
+## Before clicking anything
+
+`SetForegroundWindow` can report success while another visible window (pgAdmin,
+VS Code, etc.) silently keeps the actual input focus and absorbs every click —
+the screenshot still *shows* the BCIS window because it's topmost in z-order at
+that moment, but clicks land on the real foreground window instead and nothing
+happens. If a click produces no visible effect after retrying, minimize other
+open GUI windows first:
+
+```powershell
+Get-Process | Where-Object { $_.MainWindowTitle -like "*pgAdmin*" } | ForEach-Object {
+  [Win32X]::ShowWindow($_.MainWindowHandle, 6) | Out-Null  # SW_MINIMIZE
+}
+```
+
+Then `ShowWindow($hwnd, 9)` (SW_RESTORE) + `SetForegroundWindow($hwnd)` on the
+BCIS window before clicking.
+
 ## Launch
 
 ```bash

@@ -67,6 +67,13 @@ import type {
   ReconnectionHistoryResponse,
   CollectionsSettingsResponse,
   CollectionsSettings,
+  UserListResponse,
+  RoleListResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  UpdateUserRolesRequest,
+  ResetPasswordRequest,
+  UserDetailResponse,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -99,6 +106,12 @@ const IPC_SERVICE_ACCOUNTS_GET_SUSPENSION_HISTORY = "service-accounts:get-suspen
 const IPC_SERVICE_ACCOUNTS_GET_RECONNECTION_HISTORY = "service-accounts:get-reconnection-history";
 const IPC_SETTINGS_GET_COLLECTIONS = "settings:get-collections";
 const IPC_SETTINGS_UPDATE_COLLECTIONS = "settings:update-collections";
+const IPC_USERS_GET_LIST = "users:get-list";
+const IPC_USERS_GET_ROLES = "users:get-roles";
+const IPC_USERS_CREATE = "users:create";
+const IPC_USERS_UPDATE = "users:update";
+const IPC_USERS_UPDATE_ROLES = "users:update-roles";
+const IPC_USERS_RESET_PASSWORD = "users:reset-password";
 const IPC_SERVICES_GET_LIST = "services:get-list";
 const IPC_SERVICES_GET_BY_ID = "services:get-by-id";
 const IPC_SERVICES_CREATE = "services:create";
@@ -1138,6 +1151,58 @@ function registerIpcHandlers(): void {
       token,
       body: { confirm: true },
     });
+  });
+
+  // User management API handlers
+  ipcMain.handle(IPC_USERS_GET_LIST, async (): Promise<UserListResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<UserListResponse>("/api/v1/users", { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_USERS_GET_ROLES, async (): Promise<RoleListResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<RoleListResponse>("/api/v1/roles", { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_USERS_CREATE, async (_event, data: unknown): Promise<UserDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<UserDetailResponse>("/api/v1/users", { method: "POST", token, body: data as CreateUserRequest });
+  });
+
+  ipcMain.handle(IPC_USERS_UPDATE, async (_event, payload: unknown): Promise<UserDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: UpdateUserRequest };
+    return apiRequest<UserDetailResponse>(`/api/v1/users/${id}`, { method: "PATCH", token, body: data });
+  });
+
+  ipcMain.handle(IPC_USERS_UPDATE_ROLES, async (_event, payload: unknown): Promise<UserDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: UpdateUserRolesRequest };
+    return apiRequest<UserDetailResponse>(`/api/v1/users/${id}/roles`, { method: "PUT", token, body: data });
+  });
+
+  ipcMain.handle(IPC_USERS_RESET_PASSWORD, async (_event, payload: unknown): Promise<{ data: { userId: number } }> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: ResetPasswordRequest };
+    return apiRequest<{ data: { userId: number } }>(`/api/v1/users/${id}/reset-password`, { method: "POST", token, body: data });
   });
 
   // Collections settings API handlers

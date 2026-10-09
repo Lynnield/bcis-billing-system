@@ -880,6 +880,70 @@ export interface SoaResponse {
   meta: { generatedAt: string; basis: string };
 }
 
+// User management (matching api/src/routes/users.ts). Owner-only writes.
+export type UserAccountStatus = "active" | "inactive";
+
+export interface Role {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+export interface RoleListResponse {
+  roles: Role[];
+}
+
+export interface UserListRow {
+  id: number;
+  username: string;
+  email: string;
+  fullName: string;
+  status: UserAccountStatus;
+  roles: string[];
+  createdAt: string;
+}
+
+export interface UserListResponse {
+  users: UserListRow[];
+}
+
+export interface UserDetail {
+  id: number;
+  username: string;
+  email: string;
+  fullName: string;
+  status: UserAccountStatus;
+  lastLoginAt: string | null;
+  createdAt: string;
+  roles: Role[];
+}
+
+export interface UserDetailResponse {
+  data: UserDetail;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  email: string;
+  fullName: string;
+  password: string;
+  roleIds: number[];
+}
+
+export interface UpdateUserRequest {
+  email?: string;
+  fullName?: string;
+  status?: UserAccountStatus;
+}
+
+export interface UpdateUserRolesRequest {
+  roleIds: number[];
+}
+
+export interface ResetPasswordRequest {
+  password: string;
+}
+
 // Receivables (matching api/src/routes/receivables.ts)
 // Named AgingBucketKey, distinct from the pre-existing AgingBucket interface
 // above (the {count, amount} shape) — this is the bucket label itself.
@@ -1152,6 +1216,20 @@ export interface BcisDesktopApi {
     verify: (id: number) => Promise<BackupDetailResponse>;
     /** Restore a backup, replacing the live database. Requires explicit confirmation. */
     restore: (id: number) => Promise<BackupDetailResponse>;
+  };
+  users: {
+    /** List all users with their roles. Owner/Administrator. */
+    getList: () => Promise<UserListResponse>;
+    /** List all roles. Owner/Administrator. */
+    getRoles: () => Promise<RoleListResponse>;
+    /** Create a user with an initial role set. Owner only. */
+    create: (data: CreateUserRequest) => Promise<UserDetailResponse>;
+    /** Update a user's profile/status. Owner only. */
+    update: (id: number, data: UpdateUserRequest) => Promise<UserDetailResponse>;
+    /** Replace a user's role assignments. Owner only. */
+    updateRoles: (id: number, data: UpdateUserRolesRequest) => Promise<UserDetailResponse>;
+    /** Reset a user's password. Owner only. */
+    resetPassword: (id: number, data: ResetPasswordRequest) => Promise<{ data: { userId: number } }>;
   };
   settings: {
     /** Read the configurable grace period / suspension threshold. */

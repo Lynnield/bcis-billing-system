@@ -78,6 +78,13 @@ import type {
   ReconnectionHistoryResponse,
   CollectionsSettingsResponse,
   CollectionsSettings,
+  UserListResponse,
+  RoleListResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  UpdateUserRolesRequest,
+  ResetPasswordRequest,
+  UserDetailResponse,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -232,6 +239,16 @@ const api: BcisDesktopApi = {
     create: (): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:create"),
     verify: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:verify", id),
     restore: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:restore", id),
+  },
+  users: {
+    getList: (): Promise<UserListResponse> => ipcRenderer.invoke("users:get-list"),
+    getRoles: (): Promise<RoleListResponse> => ipcRenderer.invoke("users:get-roles"),
+    create: (data: CreateUserRequest): Promise<UserDetailResponse> => ipcRenderer.invoke("users:create", data),
+    update: (id: number, data: UpdateUserRequest): Promise<UserDetailResponse> => ipcRenderer.invoke("users:update", { id, data }),
+    updateRoles: (id: number, data: UpdateUserRolesRequest): Promise<UserDetailResponse> =>
+      ipcRenderer.invoke("users:update-roles", { id, data }),
+    resetPassword: (id: number, data: ResetPasswordRequest): Promise<{ data: { userId: number } }> =>
+      ipcRenderer.invoke("users:reset-password", { id, data }),
   },
   settings: {
     getCollections: (): Promise<CollectionsSettingsResponse> => ipcRenderer.invoke("settings:get-collections"),

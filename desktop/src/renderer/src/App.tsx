@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { Layout } from "@/components/ui/Layout";
 import { Dashboard } from "@/components/dashboard/Dashboard";
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
 import { SubscriberList } from "@/components/subscribers/SubscriberList";
 import { ServiceAccountList } from "@/components/service-accounts/ServiceAccountList";
 import { ServiceList } from "@/components/services/ServiceList";
@@ -18,6 +17,7 @@ import { BackupPage } from "@/components/backup/BackupPage";
 import { ReportsPage } from "@/components/reports/ReportsPage";
 import { CollectionsPage } from "@/components/collections/CollectionsPage";
 import { ReceivablesPage } from "@/components/receivables/ReceivablesPage";
+import { UserManagementPage } from "@/components/users/UserManagementPage";
 import { ToastProvider } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 
@@ -86,7 +86,7 @@ function AppContent() {
           <Route path="receivables" element={<ReceivablesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="collection-areas" element={<CollectionAreaList />} />
-          <Route path="user-management" element={<PlaceholderPage pageKey="user-management" title="User Management" />} />
+          <Route path="user-management" element={<UserManagementPage />} />
           <Route path="backup" element={<BackupPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
