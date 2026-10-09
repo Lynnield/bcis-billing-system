@@ -399,6 +399,7 @@ export type CollectorStatus = "active" | "inactive";
 export interface Collector {
   id: number;
   fullName: string;
+  contactNumber: string | null;
   status: CollectorStatus;
   collectionAreaId: number | null;
   createdAt: string;
@@ -407,6 +408,76 @@ export interface Collector {
 
 export interface CollectorListResponse {
   data: Collector[];
+}
+
+export interface CollectorDetailResponse {
+  data: Collector;
+}
+
+export interface CreateCollectorRequest {
+  fullName: string;
+  contactNumber?: string;
+  collectionAreaId?: number;
+  status?: CollectorStatus;
+}
+
+export interface UpdateCollectorRequest {
+  fullName?: string;
+  contactNumber?: string | null;
+  collectionAreaId?: number | null;
+  status?: CollectorStatus;
+}
+
+// Collection batches (matching api/src/routes/collection-batches.ts)
+export type CollectionBatchStatus = "open" | "closed" | "remitted" | "reconciled";
+
+export interface CollectionBatch {
+  id: number;
+  collectorId: number;
+  batchDate: string;
+  status: CollectionBatchStatus;
+  expectedAmount: string;
+  remittedAmount: string;
+  shortageAmount: string;
+  overageAmount: string;
+  reconciliationNotes: string | null;
+  reconciledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionBatchPaymentRow {
+  paymentId: number;
+  amount: string;
+  method: string;
+  status: string;
+  paymentDate: string;
+  serviceAccountId: number;
+}
+
+export interface CollectionBatchDetail extends CollectionBatch {
+  collector: { id: number; fullName: string; status: CollectorStatus } | null;
+  payments: CollectionBatchPaymentRow[];
+  expectedAmountComputed: string;
+}
+
+export interface CollectionBatchListResponse {
+  data: CollectionBatch[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export interface CollectionBatchDetailResponse {
+  data: CollectionBatchDetail;
+}
+
+export interface CreateCollectionBatchRequest {
+  collectorId: number;
+  batchDate: string;
+}
+
+export interface RemitBatchRequest {
+  remittedAmount: string;
+  reconciliationNotes?: string;
 }
 
 // Billing Period types (matching api/src/routes/billing-periods.ts)
@@ -707,6 +778,51 @@ export interface RejectPaymentResponse {
   };
 }
 
+// Subscriber ledger and Statement of Account (matching
+// GET /api/v1/reports/ledger/:serviceAccountId and /soa/:serviceAccountId).
+export interface LedgerEntryDto {
+  date: string;
+  type: string;
+  reference: string;
+  description: string;
+  debit: string;
+  credit: string;
+  runningBalance: string;
+}
+
+export interface LedgerResponse {
+  data: {
+    serviceAccount: { id: number; serviceNumber: string; status: string; subscriberId: number; subscriberName: string };
+    entries: LedgerEntryDto[];
+    closingBalance: string;
+  };
+  meta: { basis: string };
+}
+
+export interface SoaOutstandingInvoice {
+  invoiceId: number;
+  invoiceNumber: string;
+  totalAmount: string;
+  allocated: string;
+  balance: string;
+  dueDate: string;
+  daysOverdue: number;
+  bucket: string;
+}
+
+export interface SoaResponse {
+  data: {
+    subscriber: { id: number; accountNumber: string; name: string; email: string | null; contactNumber: string | null };
+    serviceAccount: { id: number; serviceNumber: string; status: string };
+    service: { name: string; type: string };
+    plan: { name: string; price: string };
+    outstandingInvoices: SoaOutstandingInvoice[];
+    recentPayments: Array<{ id: number; amount: string; method: string; status: string; paymentDate: string; receiptNumber: string | null }>;
+    totals: { outstandingBalance: string; overdueBalance: string; aging: Record<string, string> };
+  };
+  meta: { generatedAt: string; basis: string };
+}
+
 // Backup & restore (matching api/src/routes/backup.ts). Owner-only.
 export type BackupStatus = "completed" | "verified" | "failed" | "restored";
 
@@ -856,6 +972,26 @@ export interface BcisDesktopApi {
   collectors: {
     /** Get all collectors */
     getList: (status?: CollectorStatus) => Promise<CollectorListResponse>;
+    /** Get collector by ID */
+    getById: (id: number) => Promise<CollectorDetailResponse>;
+    /** Create a new collector */
+    create: (data: CreateCollectorRequest) => Promise<CollectorDetailResponse>;
+    /** Update a collector */
+    update: (id: number, data: UpdateCollectorRequest) => Promise<CollectorDetailResponse>;
+  };
+  collectionBatches: {
+    /** Get paginated list of collection batches */
+    getList: (params: { page?: number; pageSize?: number; collectorId?: number; status?: CollectionBatchStatus }) => Promise<CollectionBatchListResponse>;
+    /** Get a batch with its collector and assigned payments */
+    getById: (id: number) => Promise<CollectionBatchDetailResponse>;
+    /** Create a new OPEN batch for a collector */
+    create: (data: CreateCollectionBatchRequest) => Promise<CollectionBatchDetailResponse>;
+    /** Add a posted payment to an open batch */
+    addPayment: (batchId: number, paymentId: number) => Promise<CollectionBatchDetailResponse>;
+    /** Record the collector's remittance; computes shortage/overage automatically */
+    remit: (id: number, data: RemitBatchRequest) => Promise<CollectionBatchDetailResponse>;
+    /** Close out a remitted batch after reviewing any shortage/overage */
+    reconcile: (id: number) => Promise<CollectionBatchDetailResponse>;
   };
   invoices: {
     /** Get paginated list of invoices */
@@ -915,5 +1051,9 @@ export interface BcisDesktopApi {
   reports: {
     /** Fetch a report as PDF/XLSX and prompt the user to save it. savedPath is null if the user cancels. */
     export: (request: ReportExportRequest) => Promise<ReportExportResult>;
+    /** Full chronological ledger with running balance for one service account. */
+    getLedger: (serviceAccountId: number) => Promise<LedgerResponse>;
+    /** Statement of Account (outstanding invoices + totals) for one service account. */
+    getSoa: (serviceAccountId: number) => Promise<SoaResponse>;
   };
 }

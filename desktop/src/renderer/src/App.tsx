@@ -16,6 +16,7 @@ import { PaymentList } from "@/components/payments/PaymentList";
 import { GcashVerificationQueue } from "@/components/payments/GcashVerificationQueue";
 import { BackupPage } from "@/components/backup/BackupPage";
 import { ReportsPage } from "@/components/reports/ReportsPage";
+import { CollectionsPage } from "@/components/collections/CollectionsPage";
 import { ToastProvider } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 
@@ -80,7 +81,7 @@ function AppContent() {
           <Route path="billing-periods" element={<BillingPeriodsRoute />} />
           <Route path="payments" element={<PaymentList />} />
           <Route path="gcash-verification" element={<GcashVerificationQueue />} />
-          <Route path="collections" element={<PlaceholderPage pageKey="collections" title="Collections" />} />
+          <Route path="collections" element={<CollectionsPage />} />
           <Route path="receivables" element={<PlaceholderPage pageKey="receivables" title="Receivables" />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="collection-areas" element={<CollectionAreaList />} />

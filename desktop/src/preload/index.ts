@@ -58,6 +58,16 @@ import type {
   BackupDetailResponse,
   ReportExportRequest,
   ReportExportResult,
+  LedgerResponse,
+  SoaResponse,
+  CollectorDetailResponse,
+  CreateCollectorRequest,
+  UpdateCollectorRequest,
+  CollectionBatchListResponse,
+  CollectionBatchDetailResponse,
+  CreateCollectionBatchRequest,
+  RemitBatchRequest,
+  CollectionBatchStatus,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -148,6 +158,22 @@ const api: BcisDesktopApi = {
   collectors: {
     getList: (status?: CollectorStatus): Promise<CollectorListResponse> =>
       ipcRenderer.invoke("collectors:get-list", status),
+    getById: (id: number): Promise<CollectorDetailResponse> => ipcRenderer.invoke("collectors:get-by-id", id),
+    create: (data: CreateCollectorRequest): Promise<CollectorDetailResponse> => ipcRenderer.invoke("collectors:create", data),
+    update: (id: number, data: UpdateCollectorRequest): Promise<CollectorDetailResponse> =>
+      ipcRenderer.invoke("collectors:update", { id, data }),
+  },
+  collectionBatches: {
+    getList: (params: { page?: number; pageSize?: number; collectorId?: number; status?: CollectionBatchStatus }): Promise<CollectionBatchListResponse> =>
+      ipcRenderer.invoke("collection-batches:get-list", params),
+    getById: (id: number): Promise<CollectionBatchDetailResponse> => ipcRenderer.invoke("collection-batches:get-by-id", id),
+    create: (data: CreateCollectionBatchRequest): Promise<CollectionBatchDetailResponse> =>
+      ipcRenderer.invoke("collection-batches:create", data),
+    addPayment: (batchId: number, paymentId: number): Promise<CollectionBatchDetailResponse> =>
+      ipcRenderer.invoke("collection-batches:add-payment", { batchId, paymentId }),
+    remit: (id: number, data: RemitBatchRequest): Promise<CollectionBatchDetailResponse> =>
+      ipcRenderer.invoke("collection-batches:remit", { id, data }),
+    reconcile: (id: number): Promise<CollectionBatchDetailResponse> => ipcRenderer.invoke("collection-batches:reconcile", id),
   },
   invoices: {
     getList: (params: {
@@ -197,6 +223,8 @@ const api: BcisDesktopApi = {
   },
   reports: {
     export: (request: ReportExportRequest): Promise<ReportExportResult> => ipcRenderer.invoke("reports:export", request),
+    getLedger: (serviceAccountId: number): Promise<LedgerResponse> => ipcRenderer.invoke("reports:get-ledger", serviceAccountId),
+    getSoa: (serviceAccountId: number): Promise<SoaResponse> => ipcRenderer.invoke("reports:get-soa", serviceAccountId),
   },
 };
 

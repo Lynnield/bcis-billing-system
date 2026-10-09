@@ -47,6 +47,16 @@ import type {
   BackupListResponse,
   BackupDetailResponse,
   ReportExportResult,
+  LedgerResponse,
+  SoaResponse,
+  CollectorDetailResponse,
+  CreateCollectorRequest,
+  UpdateCollectorRequest,
+  CollectionBatchListResponse,
+  CollectionBatchDetailResponse,
+  CreateCollectionBatchRequest,
+  RemitBatchRequest,
+  CollectionBatchStatus,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -88,6 +98,15 @@ const IPC_COLLECTION_AREAS_GET_BY_ID = "collection-areas:get-by-id";
 const IPC_COLLECTION_AREAS_CREATE = "collection-areas:create";
 const IPC_COLLECTION_AREAS_UPDATE = "collection-areas:update";
 const IPC_COLLECTORS_GET_LIST = "collectors:get-list";
+const IPC_COLLECTORS_GET_BY_ID = "collectors:get-by-id";
+const IPC_COLLECTORS_CREATE = "collectors:create";
+const IPC_COLLECTORS_UPDATE = "collectors:update";
+const IPC_COLLECTION_BATCHES_GET_LIST = "collection-batches:get-list";
+const IPC_COLLECTION_BATCHES_GET_BY_ID = "collection-batches:get-by-id";
+const IPC_COLLECTION_BATCHES_CREATE = "collection-batches:create";
+const IPC_COLLECTION_BATCHES_ADD_PAYMENT = "collection-batches:add-payment";
+const IPC_COLLECTION_BATCHES_REMIT = "collection-batches:remit";
+const IPC_COLLECTION_BATCHES_RECONCILE = "collection-batches:reconcile";
 const IPC_INVOICES_GET_LIST = "invoices:get-list";
 const IPC_INVOICES_GET_BY_ID = "invoices:get-by-id";
 const IPC_INVOICES_CREATE = "invoices:create";
@@ -106,6 +125,8 @@ const IPC_BACKUP_CREATE = "backup:create";
 const IPC_BACKUP_VERIFY = "backup:verify";
 const IPC_BACKUP_RESTORE = "backup:restore";
 const IPC_REPORTS_EXPORT = "reports:export";
+const IPC_REPORTS_GET_LEDGER = "reports:get-ledger";
+const IPC_REPORTS_GET_SOA = "reports:get-soa";
 
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
@@ -770,6 +791,92 @@ function registerIpcHandlers(): void {
     });
   });
 
+  ipcMain.handle(IPC_COLLECTORS_GET_BY_ID, async (_event, id: unknown): Promise<CollectorDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectorDetailResponse>(`/api/v1/collectors/${id}`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_COLLECTORS_CREATE, async (_event, data: unknown): Promise<CollectorDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectorDetailResponse>("/api/v1/collectors", { method: "POST", token, body: data as CreateCollectorRequest });
+  });
+
+  ipcMain.handle(IPC_COLLECTORS_UPDATE, async (_event, payload: unknown): Promise<CollectorDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: UpdateCollectorRequest };
+    return apiRequest<CollectorDetailResponse>(`/api/v1/collectors/${id}`, { method: "PATCH", token, body: data });
+  });
+
+  // Collection Batches API handlers
+  ipcMain.handle(IPC_COLLECTION_BATCHES_GET_LIST, async (_event, params: unknown): Promise<CollectionBatchListResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const p = params as { page?: number; pageSize?: number; collectorId?: number; status?: CollectionBatchStatus };
+    const query = new URLSearchParams();
+    if (p.page) query.set("page", String(p.page));
+    if (p.pageSize) query.set("pageSize", String(p.pageSize));
+    if (p.collectorId) query.set("collectorId", String(p.collectorId));
+    if (p.status) query.set("status", p.status);
+    return apiRequest<CollectionBatchListResponse>(`/api/v1/collection-batches?${query.toString()}`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_GET_BY_ID, async (_event, id: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${id}`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_CREATE, async (_event, data: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionBatchDetailResponse>("/api/v1/collection-batches", { method: "POST", token, body: data as CreateCollectionBatchRequest });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_ADD_PAYMENT, async (_event, payload: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { batchId, paymentId } = payload as { batchId: number; paymentId: number };
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${batchId}/payments`, {
+      method: "POST",
+      token,
+      body: { paymentId },
+    });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_REMIT, async (_event, payload: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: RemitBatchRequest };
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${id}/remit`, { method: "POST", token, body: data });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_RECONCILE, async (_event, id: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${id}/reconcile`, { method: "POST", token });
+  });
+
   // Invoices API handlers
   ipcMain.handle(IPC_INVOICES_GET_LIST, async (_event, params: unknown): Promise<InvoiceListResponse> => {
     const token = await getStoredToken();
@@ -1034,6 +1141,22 @@ function registerIpcHandlers(): void {
     }
     await writeFile(result.filePath, buffer);
     return { savedPath: result.filePath };
+  });
+
+  ipcMain.handle(IPC_REPORTS_GET_LEDGER, async (_event, serviceAccountId: unknown): Promise<LedgerResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<LedgerResponse>(`/api/v1/reports/ledger/${serviceAccountId}`, { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_REPORTS_GET_SOA, async (_event, serviceAccountId: unknown): Promise<SoaResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<SoaResponse>(`/api/v1/reports/soa/${serviceAccountId}`, { method: "GET", token });
   });
 }
 
