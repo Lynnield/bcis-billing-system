@@ -174,7 +174,7 @@ export function LoginForm() {
           </form>
 
           <footer className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Phase 13B — Authentication Integration</p>
+            <p>Bukidnon Cable &amp; Internet Services</p>
           </footer>
         </div>
       </div>

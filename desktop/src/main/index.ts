@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, dialog } from "electron";
 import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type {
   AppInfo,
@@ -45,6 +46,7 @@ import type {
   PaymentStatus,
   BackupListResponse,
   BackupDetailResponse,
+  ReportExportResult,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -103,6 +105,7 @@ const IPC_BACKUP_GET_LIST = "backup:get-list";
 const IPC_BACKUP_CREATE = "backup:create";
 const IPC_BACKUP_VERIFY = "backup:verify";
 const IPC_BACKUP_RESTORE = "backup:restore";
+const IPC_REPORTS_EXPORT = "reports:export";
 
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
@@ -995,6 +998,42 @@ function registerIpcHandlers(): void {
       token,
       body: { confirm: true },
     });
+  });
+
+  // Report export: fetches a binary PDF/XLSX from the API (not JSON, so it
+  // bypasses apiRequest) and prompts the user for a save location. Returns
+  // null if the user cancels the save dialog — that is not an error.
+  ipcMain.handle(IPC_REPORTS_EXPORT, async (_event, payload: unknown): Promise<ReportExportResult> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { path, format, suggestedName } = payload as { path: string; format: "pdf" | "xlsx"; suggestedName: string };
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      let message = `Export failed with status ${response.status}`;
+      try {
+        const body = (await response.json()) as { message?: string };
+        if (body?.message) message = body.message;
+      } catch {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const result = await dialog.showSaveDialog({
+      defaultPath: suggestedName,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { savedPath: null };
+    }
+    await writeFile(result.filePath, buffer);
+    return { savedPath: result.filePath };
   });
 }
 

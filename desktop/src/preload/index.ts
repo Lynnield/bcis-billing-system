@@ -56,6 +56,8 @@ import type {
   PaymentStatus,
   BackupListResponse,
   BackupDetailResponse,
+  ReportExportRequest,
+  ReportExportResult,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -192,6 +194,9 @@ const api: BcisDesktopApi = {
     create: (): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:create"),
     verify: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:verify", id),
     restore: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:restore", id),
+  },
+  reports: {
+    export: (request: ReportExportRequest): Promise<ReportExportResult> => ipcRenderer.invoke("reports:export", request),
   },
 };
 

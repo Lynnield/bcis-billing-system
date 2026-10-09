@@ -731,6 +731,21 @@ export interface BackupDetailResponse {
   data: BackupRecord;
 }
 
+// Report export (matching the new GET /api/v1/reports/*/export routes).
+// The main process fetches the binary and prompts for a save location;
+// the renderer only knows which API path to ask for.
+export type ReportExportFormat = "pdf" | "xlsx";
+
+export interface ReportExportRequest {
+  path: string;
+  format: ReportExportFormat;
+  suggestedName: string;
+}
+
+export interface ReportExportResult {
+  savedPath: string | null;
+}
+
 /**
  * Narrow, typed boundary exposed to the renderer via contextBridge.
  * The renderer must NEVER get direct access to ipcRenderer, Node APIs,
@@ -896,5 +911,9 @@ export interface BcisDesktopApi {
     verify: (id: number) => Promise<BackupDetailResponse>;
     /** Restore a backup, replacing the live database. Requires explicit confirmation. */
     restore: (id: number) => Promise<BackupDetailResponse>;
+  };
+  reports: {
+    /** Fetch a report as PDF/XLSX and prompt the user to save it. savedPath is null if the user cancels. */
+    export: (request: ReportExportRequest) => Promise<ReportExportResult>;
   };
 }
