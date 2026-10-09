@@ -108,7 +108,11 @@ export const NAV_ITEMS: NavItem[] = [
     key: "user-management",
     label: "User Management",
     iconName: "Settings",
-    roles: ["Owner / Super Admin", "Administrator"],
+    // Matches api/src/routes/users.ts MANAGE_ROLES exactly — user
+    // administration can grant any other capability, so unlike most
+    // "Owner + Administrator" areas this one does not extend to
+    // Administrator, even though GET /users itself is readable by both.
+    roles: ["Owner / Super Admin"],
   },
   {
     key: "backup",
