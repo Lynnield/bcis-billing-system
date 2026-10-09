@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+api/dist/
+desktop/dist/
+desktop/out/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Electron-builder / packaging
+desktop/release/
+
+# Backups and attachments (generated at runtime, never checked in)
+backups/
+attachments/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor/OS cruft
+.DS_Store
+Thumbs.db
+
+# Test/coverage output
+coverage/

@@ -1,0 +1,52 @@
+{
+  "name": "bcis-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BCIS Subscription Billing and Collection System - Desktop Application",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:dir": "electron-vite build && electron-builder --dir"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@tanstack/react-query": "^5.90.2",
+    "@tanstack/react-table": "^8.21.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-store": "^11.0.2",
+    "lucide-react": "^0.545.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.65.0",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/node": "^24.7.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^2.1.8"
+  }
+}
