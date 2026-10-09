@@ -43,6 +43,8 @@ import type {
   VerifyPaymentResponse,
   RejectPaymentResponse,
   PaymentStatus,
+  BackupListResponse,
+  BackupDetailResponse,
   SubscriberStatus,
   ServiceAccountStatus,
   ServiceStatus,
@@ -97,6 +99,10 @@ const IPC_PAYMENTS_CREATE = "payments:create";
 const IPC_PAYMENTS_REVERSE = "payments:reverse";
 const IPC_PAYMENTS_VERIFY = "payments:verify";
 const IPC_PAYMENTS_REJECT = "payments:reject";
+const IPC_BACKUP_GET_LIST = "backup:get-list";
+const IPC_BACKUP_CREATE = "backup:create";
+const IPC_BACKUP_VERIFY = "backup:verify";
+const IPC_BACKUP_RESTORE = "backup:restore";
 
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
@@ -950,6 +956,44 @@ function registerIpcHandlers(): void {
       method: "POST",
       token,
       body: { reason },
+    });
+  });
+
+  // Backup API handlers — Owner-only on the server regardless of what the
+  // renderer shows.
+  ipcMain.handle(IPC_BACKUP_GET_LIST, async (): Promise<BackupListResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<BackupListResponse>("/api/v1/backup", { method: "GET", token });
+  });
+
+  ipcMain.handle(IPC_BACKUP_CREATE, async (): Promise<BackupDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<BackupDetailResponse>("/api/v1/backup", { method: "POST", token });
+  });
+
+  ipcMain.handle(IPC_BACKUP_VERIFY, async (_event, id: unknown): Promise<BackupDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<BackupDetailResponse>(`/api/v1/backup/${id}/verify`, { method: "POST", token });
+  });
+
+  ipcMain.handle(IPC_BACKUP_RESTORE, async (_event, id: unknown): Promise<BackupDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<BackupDetailResponse>(`/api/v1/backup/${id}/restore`, {
+      method: "POST",
+      token,
+      body: { confirm: true },
     });
   });
 }

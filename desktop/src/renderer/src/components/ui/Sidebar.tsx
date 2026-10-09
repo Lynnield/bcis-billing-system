@@ -17,6 +17,7 @@ import {
   Receipt,
   Calendar,
   ShieldCheck,
+  DatabaseBackup,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -33,6 +34,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   Receipt: <Receipt className="h-5 w-5" />,
   Calendar: <Calendar className="h-5 w-5" />,
   ShieldCheck: <ShieldCheck className="h-5 w-5" />,
+  DatabaseBackup: <DatabaseBackup className="h-5 w-5" />,
 };
 
 interface SidebarProps {

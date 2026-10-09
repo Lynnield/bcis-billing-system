@@ -54,6 +54,8 @@ import type {
   RejectPaymentResponse,
   CreatePaymentRequest,
   PaymentStatus,
+  BackupListResponse,
+  BackupDetailResponse,
 } from "../shared/types";
 
 const api: BcisDesktopApi = {
@@ -184,6 +186,12 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("payments:verify", { id, note }),
     reject: (id: number, reason: string): Promise<RejectPaymentResponse> =>
       ipcRenderer.invoke("payments:reject", { id, reason }),
+  },
+  backup: {
+    getList: (): Promise<BackupListResponse> => ipcRenderer.invoke("backup:get-list"),
+    create: (): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:create"),
+    verify: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:verify", id),
+    restore: (id: number): Promise<BackupDetailResponse> => ipcRenderer.invoke("backup:restore", id),
   },
 };
 

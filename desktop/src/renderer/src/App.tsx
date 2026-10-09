@@ -14,6 +14,7 @@ import { InvoiceList } from "@/components/invoices/InvoiceList";
 import { BillingPeriodList } from "@/components/billing-periods/BillingPeriodList";
 import { PaymentList } from "@/components/payments/PaymentList";
 import { GcashVerificationQueue } from "@/components/payments/GcashVerificationQueue";
+import { BackupPage } from "@/components/backup/BackupPage";
 import { ToastProvider } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 
@@ -83,6 +84,7 @@ function AppContent() {
           <Route path="reports" element={<PlaceholderPage pageKey="reports" title="Reports" />} />
           <Route path="collection-areas" element={<CollectionAreaList />} />
           <Route path="user-management" element={<PlaceholderPage pageKey="user-management" title="User Management" />} />
+          <Route path="backup" element={<BackupPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

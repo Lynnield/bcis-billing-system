@@ -707,6 +707,30 @@ export interface RejectPaymentResponse {
   };
 }
 
+// Backup & restore (matching api/src/routes/backup.ts). Owner-only.
+export type BackupStatus = "completed" | "verified" | "failed" | "restored";
+
+export interface BackupRecord {
+  id: number;
+  filename: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  status: BackupStatus;
+  createdByUserId: number | null;
+  createdAt: string;
+  verifiedAt: string | null;
+  restoredAt: string | null;
+  restoredByUserId: number | null;
+}
+
+export interface BackupListResponse {
+  data: BackupRecord[];
+}
+
+export interface BackupDetailResponse {
+  data: BackupRecord;
+}
+
 /**
  * Narrow, typed boundary exposed to the renderer via contextBridge.
  * The renderer must NEVER get direct access to ipcRenderer, Node APIs,
@@ -862,5 +886,15 @@ export interface BcisDesktopApi {
     verify: (id: number, note?: string) => Promise<VerifyPaymentResponse>;
     /** Reject a pending GCash payment. Requires a reason; creates no allocations. */
     reject: (id: number, reason: string) => Promise<RejectPaymentResponse>;
+  };
+  backup: {
+    /** List backup history, newest first. */
+    getList: () => Promise<BackupListResponse>;
+    /** Run pg_dump and record the result. */
+    create: () => Promise<BackupDetailResponse>;
+    /** Verify a backup file's checksum and internal structure without touching any database. */
+    verify: (id: number) => Promise<BackupDetailResponse>;
+    /** Restore a backup, replacing the live database. Requires explicit confirmation. */
+    restore: (id: number) => Promise<BackupDetailResponse>;
   };
 }

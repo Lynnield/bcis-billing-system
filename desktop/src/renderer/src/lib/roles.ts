@@ -110,6 +110,14 @@ export const NAV_ITEMS: NavItem[] = [
     iconName: "Settings",
     roles: ["Owner / Super Admin", "Administrator"],
   },
+  {
+    key: "backup",
+    label: "Backup & Restore",
+    iconName: "DatabaseBackup",
+    // Matches api/src/routes/backup.ts BACKUP_ROLES exactly — only the Owner
+    // has this capability per the spec's role matrix (3.1).
+    roles: ["Owner / Super Admin"],
+  },
 ];
 
 /**

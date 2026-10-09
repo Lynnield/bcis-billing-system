@@ -6,7 +6,7 @@ describe("Phase 13C — Navigation & Dashboard Tests", () => {
       const { filterNavItems } = await import("@/lib/roles");
       const user = { id: 1, username: "owner", email: "o@test.com", fullName: "Owner", roles: ["Owner / Super Admin"] };
       const items = filterNavItems(user);
-      expect(items.length).toBe(12);
+      expect(items.length).toBe(13);
       expect(items.map((i) => i.key)).toEqual([
         "dashboard",
         "subscribers",
@@ -20,6 +20,7 @@ describe("Phase 13C — Navigation & Dashboard Tests", () => {
         "reports",
         "collection-areas",
         "user-management",
+        "backup",
       ]);
     });
 

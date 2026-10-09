@@ -404,6 +404,27 @@ export const auditLogs = pgTable("audit_logs", {
 ]);
 
 // ---------------------------------------------------------------------------
+// Backup history
+// ---------------------------------------------------------------------------
+
+export const backupStatusEnum = pgEnum("backup_status", ["completed", "verified", "failed", "restored"]);
+
+export const backupHistory = pgTable("backup_history", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  checksumSha256: varchar("checksum_sha256", { length: 64 }).notNull(),
+  status: backupStatusEnum("status").notNull().default("completed"),
+  createdByUserId: bigint("created_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+  restoredAt: timestamp("restored_at", { withTimezone: true, mode: "date" }),
+  restoredByUserId: bigint("restored_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+}, (t) => [
+  index("backup_history_created_at_idx").on(t.createdAt),
+]);
+
+// ---------------------------------------------------------------------------
 // Relations (for Drizzle relational queries)
 // ---------------------------------------------------------------------------
 
