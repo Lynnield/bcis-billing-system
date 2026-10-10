@@ -35,6 +35,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           aria-invalid={!!error}
           aria-describedby={error ? `${selectId}-error` : helperText ? `${selectId}-helper` : undefined}
           {...props}
+          // react-hook-form's register() never sets defaultValue, so without
+          // this, Chromium auto-selects the first *enabled* option (skipping
+          // the disabled placeholder) and visually shows it as chosen while
+          // RHF's own state is still unset — submitting then fails validation
+          // on a field that looks filled in.
+          defaultValue={placeholder && props.defaultValue === undefined ? "" : props.defaultValue}
         >
           {placeholder && <option value="" disabled>{placeholder}</option>}
           {options.map((option) => (
