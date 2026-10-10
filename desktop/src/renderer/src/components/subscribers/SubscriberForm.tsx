@@ -82,9 +82,44 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
   const onSubmit = async (data: SubscriberFormData) => {
     try {
       if (isCreate) {
-        await window.bcis.subscribers.create(data as CreateSubscriberRequest);
+        // createSchema's optional fields are plain .optional() (not
+        // nullable) — a blank input must be omitted as undefined, not sent
+        // as "" (e.g. "" fails email's .email() check since .optional()
+        // only skips undefined, not an empty-but-present string).
+        const payload: CreateSubscriberRequest = {
+          accountNumber: data.accountNumber,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          addressLine1: data.addressLine1,
+          status: data.status,
+          contactNumber: data.contactNumber?.trim() || undefined,
+          email: data.email?.trim() || undefined,
+          addressLine2: data.addressLine2?.trim() || undefined,
+          city: data.city?.trim() || undefined,
+          province: data.province?.trim() || undefined,
+          postalCode: data.postalCode?.trim() || undefined,
+        };
+        await window.bcis.subscribers.create(payload);
       } else if (initialData) {
-        await window.bcis.subscribers.update(initialData.id, data as UpdateSubscriberRequest);
+        // updateSchema is .strict() with no accountNumber/status fields —
+        // status changes go through a dedicated endpoint — so sending them
+        // here fails validation outright. Its optional fields are
+        // .nullable(), where null means "clear it" and undefined means
+        // "leave unchanged"; since this form always shows the field's
+        // current value, a blank input here means the user explicitly
+        // cleared it, so blank maps to null, not undefined.
+        const payload: UpdateSubscriberRequest = {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          addressLine1: data.addressLine1,
+          contactNumber: data.contactNumber?.trim() || null,
+          email: data.email?.trim() || null,
+          addressLine2: data.addressLine2?.trim() || null,
+          city: data.city?.trim() || null,
+          province: data.province?.trim() || null,
+          postalCode: data.postalCode?.trim() || null,
+        };
+        await window.bcis.subscribers.update(initialData.id, payload);
       }
       showSuccess(isCreate ? "Subscriber created" : "Subscriber updated");
       onSuccess();
