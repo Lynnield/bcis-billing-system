@@ -48,6 +48,19 @@ export function CollectionAreaList() {
     setFormModalOpen(true);
   };
 
+  // All hooks above must run unconditionally on every render (Rules of
+  // Hooks) — this must come before the loading/error early returns below.
+  const areas = React.useMemo(() => {
+    if (!data?.data) return [];
+    return data.data.filter((area: CollectionArea) => {
+      const matchesStatus = statusFilter === "all" || area.status === statusFilter;
+      const matchesSearch = search === "" ||
+        area.name.toLowerCase().includes(search.toLowerCase()) ||
+        area.description?.toLowerCase().includes(search.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [data?.data, statusFilter, search]);
+
   if (isLoading && !data) {
     return (
       <div className="space-y-4">
@@ -99,17 +112,6 @@ export function CollectionAreaList() {
       </div>
     );
   }
-
-  const areas = React.useMemo(() => {
-    if (!data?.data) return [];
-    return data.data.filter((area: CollectionArea) => {
-      const matchesStatus = statusFilter === "all" || area.status === statusFilter;
-      const matchesSearch = search === "" ||
-        area.name.toLowerCase().includes(search.toLowerCase()) ||
-        area.description?.toLowerCase().includes(search.toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
-  }, [data?.data, statusFilter, search]);
 
   return (
     <div className="space-y-4">

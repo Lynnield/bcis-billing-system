@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -7,7 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ServiceForm } from "./ServiceForm";
 import { useToast } from "@/lib/toast";
-import { Plus, Eye, Loader2 } from "lucide-react";
+import { Plus, Eye, Layers, Loader2 } from "lucide-react";
 import { getServices } from "@/lib/service-api";
 import { Service, ServiceType, ServiceStatus } from "@/shared/types";
 
@@ -36,6 +37,7 @@ const typeBadgeVariant: Record<ServiceType, "default" | "success" | "warning" | 
 };
 
 export function ServiceList() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { } = useToast();
 
@@ -209,14 +211,26 @@ export function ServiceList() {
                     {service.description ?? "—"}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleEdit(service)}
-                      aria-label={`Edit ${service.name}`}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => navigate(`/services/${service.id}/plans`)}
+                        aria-label={`View plans for ${service.name}`}
+                        title="View plans"
+                      >
+                        <Layers className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleEdit(service)}
+                        aria-label={`Edit ${service.name}`}
+                        title="Edit service"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

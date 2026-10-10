@@ -51,7 +51,19 @@ export function PlanList({ service, onBack }: PlanListProps) {
     setFormModalOpen(true);
   };
 
-  
+  // All hooks above must run unconditionally on every render (Rules of
+  // Hooks) — this must come before the loading/error early returns below.
+  const plans = React.useMemo(() => {
+    if (!data?.data) return [];
+    return data.data.filter((plan: ServicePlan) => {
+      const matchesStatus = statusFilter === "all" || plan.status === statusFilter;
+      const matchesSearch = search === "" ||
+        plan.name.toLowerCase().includes(search.toLowerCase()) ||
+        plan.description?.toLowerCase().includes(search.toLowerCase()) ||
+        plan.price.toLowerCase().includes(search.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [data?.data, statusFilter, search]);
 
   if (isLoading && !data) {
     return (
@@ -124,18 +136,6 @@ export function PlanList({ service, onBack }: PlanListProps) {
       </div>
     );
   }
-
-  const plans = React.useMemo(() => {
-    if (!data?.data) return [];
-    return data.data.filter((plan: ServicePlan) => {
-      const matchesStatus = statusFilter === "all" || plan.status === statusFilter;
-      const matchesSearch = search === "" ||
-        plan.name.toLowerCase().includes(search.toLowerCase()) ||
-        plan.description?.toLowerCase().includes(search.toLowerCase()) ||
-        plan.price.toLowerCase().includes(search.toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
-  }, [data?.data, statusFilter, search]);
 
   return (
     <div className="space-y-4">

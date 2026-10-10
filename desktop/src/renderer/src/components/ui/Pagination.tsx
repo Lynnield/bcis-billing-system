@@ -23,8 +23,8 @@ export function Pagination({
   pageSizeOptions = [10, 20, 50, 100],
   onPageSizeChange,
 }: PaginationProps) {
-  if (totalPages <= 1 && !showPageSize) return null;
-
+  // This hook must run unconditionally on every render (Rules of Hooks) —
+  // it has to come before the early return below.
   const pages = React.useMemo(() => {
     if (totalPages <= 7) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -38,6 +38,8 @@ export function Pagination({
     if (totalPages > 1) pages.push(totalPages);
     return pages;
   }, [page, totalPages]);
+
+  if (totalPages <= 1 && !showPageSize) return null;
 
   return (
     <nav className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t" aria-label="Pagination">
