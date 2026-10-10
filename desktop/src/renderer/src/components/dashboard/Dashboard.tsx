@@ -1,8 +1,9 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { KPICard } from "@/components/ui/KPICard";
-import { getDashboardSummary, getReceivablesReport } from "@/lib/dashboard-api";
+import { getDashboardSummary, getReceivablesReport, getCollectionsReport } from "@/lib/dashboard-api";
 import { Users, DollarSign, AlertTriangle, TrendingUp, CreditCard, Receipt } from "lucide-react";
 
 interface KPIData {
@@ -32,8 +33,72 @@ export function Dashboard() {
     retry: 1,
   });
 
+  const { data: collections, isLoading: collectionsLoading } = useQuery({
+    queryKey: ["dashboard", "collections"],
+    queryFn: getCollectionsReport,
+    staleTime: 30_000,
+    retry: 1,
+  });
+
   const isLoading = summaryLoading || receivablesLoading;
   const error = summaryError;
+
+  const AGING_BUCKET_LABELS: Record<string, string> = {
+    current: "Current",
+    "1-30": "1–30 days",
+    "31-60": "31–60 days",
+    "61-90": "61–90 days",
+    "90+": "90+ days",
+  };
+  const AGING_BUCKET_COLOR: Record<string, string> = {
+    current: "var(--color-primary)",
+    "1-30": "var(--color-warning)",
+    "31-60": "var(--color-warning)",
+    "61-90": "var(--color-destructive)",
+    "90+": "var(--color-destructive)",
+  };
+  const AGING_BUCKET_ORDER = ["current", "1-30", "31-60", "61-90", "90+"];
+
+  const agingChartData = React.useMemo(() => {
+    const buckets = receivables?.data?.agingBuckets as AgingBucketRecord | undefined;
+    if (!buckets) return [];
+    return AGING_BUCKET_ORDER.filter((key) => key in buckets).map((key) => ({
+      bucket: key,
+      label: AGING_BUCKET_LABELS[key] ?? key,
+      amount: Number(buckets[key]) || 0,
+      display: buckets[key],
+      color: AGING_BUCKET_COLOR[key] ?? "var(--color-muted-foreground)",
+    }));
+  }, [receivables?.data]);
+
+  const PAYMENT_METHOD_LABELS: Record<string, string> = {
+    cash: "Cash",
+    gcash: "GCash",
+    bank_transfer: "Bank Transfer",
+    cheque: "Cheque",
+    other: "Other",
+  };
+  const PAYMENT_METHOD_COLORS = [
+    "var(--color-primary)",
+    "var(--color-ring)",
+    "var(--color-success)",
+    "var(--color-warning)",
+    "var(--color-muted-foreground)",
+  ];
+
+  const paymentMethodChartData = React.useMemo(() => {
+    const rows = collections?.data?.byPaymentMethod ?? [];
+    return rows
+      .filter((r) => Number(r.total) > 0)
+      .map((r, i) => ({
+        method: r.method,
+        label: PAYMENT_METHOD_LABELS[r.method] ?? r.method,
+        value: Number(r.total) || 0,
+        display: r.total,
+        count: r.count,
+        color: PAYMENT_METHOD_COLORS[i % PAYMENT_METHOD_COLORS.length],
+      }));
+  }, [collections?.data]);
 
   const kpiCards: KPIData[] = React.useMemo(() => {
     if (!summary?.data) return [];
@@ -196,21 +261,106 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Aging Summary */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {receivables?.data?.agingBuckets &&
-          Object.entries(receivables.data.agingBuckets as AgingBucketRecord).map(([bucket, amount]) => (
-            <Card key={bucket}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{bucket}</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{amount}</div>
-                <p className="text-xs text-muted-foreground">Outstanding balance</p>
-              </CardContent>
-            </Card>
-          ))}
+      {/* Aging & Payment Method Charts */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">AR Aging</CardTitle>
+            <p className="text-xs text-muted-foreground">Outstanding balance by days overdue</p>
+          </CardHeader>
+          <CardContent>
+            {agingChartData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">No outstanding balances</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={agingChartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={{ stroke: "var(--color-border)" }}
+                    tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
+                    tickFormatter={(v: number) => v.toLocaleString()}
+                    width={56}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "var(--color-muted)" }}
+                    contentStyle={{
+                      background: "var(--color-card)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius-md)",
+                      fontSize: 12,
+                    }}
+                    formatter={(_value, _name, item) => [item.payload.display, "Outstanding"]}
+                  />
+                  <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                    {agingChartData.map((entry) => (
+                      <Cell key={entry.bucket} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Payment Method Mix</CardTitle>
+            <p className="text-xs text-muted-foreground">All-time posted payments</p>
+          </CardHeader>
+          <CardContent>
+            {collectionsLoading ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">Loading...</p>
+            ) : paymentMethodChartData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">No posted payments yet</p>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={paymentMethodChartData}
+                      dataKey="value"
+                      nameKey="label"
+                      innerRadius={55}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {paymentMethodChartData.map((entry) => (
+                        <Cell key={entry.method} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "var(--radius-md)",
+                        fontSize: 12,
+                      }}
+                      formatter={(_value, _name, item) => [item.payload.display, item.payload.label]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul className="space-y-1.5 mt-2">
+                  {paymentMethodChartData.map((entry) => (
+                    <li key={entry.method} className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-2 text-muted-foreground">
+                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} aria-hidden="true" />
+                        {entry.label}
+                      </span>
+                      <span className="tabular-nums font-medium">{entry.display}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
