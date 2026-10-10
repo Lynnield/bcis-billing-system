@@ -178,10 +178,16 @@ test) specifically so this destructive scenario never touches the shared
   and session lock, using the Windows screenshot/click technique documented
   in `.claude/skills/verify-desktop-ui/SKILL.md`; `desktop/tests/*.test.ts`
   (58 tests) covers IPC-wrapper correctness and role-based navigation at
-  the unit level.
+  the unit level. The GCash verify/reject flow and the full Collection
+  Batch lifecycle (create → add payment → remit with a shortage →
+  reconcile/close), previously untested live, were swept the same way —
+  see `tests/screenshots/` below.
 - **Screenshots / report evidence**: `reports-samples/` contains a real PDF
   and XLSX exported from the running system against the seeded demo
-  dataset.
+  dataset; `tests/screenshots/` contains real captures of the Dashboard,
+  GCash verify/reject, the Collection Batch lifecycle (including an
+  intentional shortage), and the generic payment-proof file picker, with an
+  index in `tests/screenshots/README.md`.
 - **Bug log**: below.
 
 ## Bug Log
