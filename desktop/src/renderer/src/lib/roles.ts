@@ -41,7 +41,10 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["Owner / Super Admin", "Administrator", "Technician"],
     children: [
       {
-        key: "services-list",
+        // Must match the route path in App.tsx ("services"), not an
+        // arbitrary slug — React Router has no route for "services-list"
+        // and silently falls through to the dashboard redirect otherwise.
+        key: "services",
         label: "Services",
         roles: ["Owner / Super Admin", "Administrator", "Technician"],
       },
@@ -54,7 +57,9 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
     children: [
       {
-        key: "invoices",
+        // Must match the route path in App.tsx ("billing-invoices") — there
+        // is no route for "invoices" on its own.
+        key: "billing-invoices",
         label: "Invoices",
         roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
       },

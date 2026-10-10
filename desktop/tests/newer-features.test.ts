@@ -16,6 +16,47 @@ afterEach(() => {
   vi.resetModules();
 });
 
+// The route paths actually registered in App.tsx under <Route path="/">.
+// Every clickable nav key (top-level items without children, and every
+// child under a grouped item) must be one of these — Sidebar.tsx renders a
+// <NavLink to={key}>, and a key with no matching route silently falls
+// through to the "*" wildcard, which redirects to the dashboard. This is
+// exactly the bug that made "services-list" and "invoices" to silently
+// bounce back to the dashboard (desktop/src/renderer/src/lib/roles.ts
+// previously used those slugs instead of the real "services" and
+// "billing-invoices" route paths).
+const REGISTERED_ROUTE_PATHS = new Set([
+  "dashboard",
+  "subscribers",
+  "service-accounts",
+  "services",
+  "billing-invoices",
+  "billing-periods",
+  "payments",
+  "gcash-verification",
+  "collections",
+  "receivables",
+  "reports",
+  "collection-areas",
+  "user-management",
+  "backup",
+]);
+
+describe("Navigation route-path integrity", () => {
+  it("every clickable nav key matches a route actually registered in App.tsx", async () => {
+    const { NAV_ITEMS } = await import("@/lib/roles");
+    for (const item of NAV_ITEMS) {
+      if (item.children && item.children.length > 0) {
+        for (const child of item.children) {
+          expect(REGISTERED_ROUTE_PATHS.has(child.key), `child nav key "${child.key}" has no matching route`).toBe(true);
+        }
+      } else {
+        expect(REGISTERED_ROUTE_PATHS.has(item.key), `nav key "${item.key}" has no matching route`).toBe(true);
+      }
+    }
+  });
+});
+
 describe("Newer-feature navigation role filtering", () => {
   it("Owner sees Collections, Receivables, Reports, User Management and Backup", async () => {
     const { filterNavItems } = await import("@/lib/roles");
