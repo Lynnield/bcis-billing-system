@@ -272,6 +272,9 @@ const api: BcisDesktopApi = {
     getLedger: (serviceAccountId: number): Promise<LedgerResponse> => ipcRenderer.invoke("reports:get-ledger", serviceAccountId),
     getSoa: (serviceAccountId: number): Promise<SoaResponse> => ipcRenderer.invoke("reports:get-soa", serviceAccountId),
   },
+  files: {
+    selectProofFile: (): Promise<string | null> => ipcRenderer.invoke("files:select-proof"),
+  },
 };
 
 contextBridge.exposeInMainWorld("bcis", api);

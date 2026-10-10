@@ -720,6 +720,7 @@ export interface Payment {
   paymentDate: string;
   receiptNumber: string | null;
   referenceNumber: string | null;
+  proofAttachmentPath: string | null;
   status: PaymentStatus;
   postedByUserId: number | null;
   postedAt: string;
@@ -784,6 +785,7 @@ export interface CreatePaymentRequest {
   paymentDate?: string;
   receiptNumber?: string;
   referenceNumber?: string;
+  proofAttachmentPath?: string;
   gcash?: {
     gcashReferenceNumber: string;
     proofAttachmentPath?: string;
@@ -1259,5 +1261,14 @@ export interface BcisDesktopApi {
     getLedger: (serviceAccountId: number) => Promise<LedgerResponse>;
     /** Statement of Account (outstanding invoices + totals) for one service account. */
     getSoa: (serviceAccountId: number) => Promise<SoaResponse>;
+  };
+  files: {
+    /**
+     * Opens a native file picker for a payment proof (image/PDF) and
+     * returns the selected path, or null if the user cancelled. Only
+     * records the path as a reference on the payment — does not upload
+     * or copy the file anywhere.
+     */
+    selectProofFile: () => Promise<string | null>;
   };
 }

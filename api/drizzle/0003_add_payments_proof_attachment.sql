@@ -1,0 +1,1 @@
+ALTER TABLE "payments" ADD COLUMN "proof_attachment_path" varchar(500);

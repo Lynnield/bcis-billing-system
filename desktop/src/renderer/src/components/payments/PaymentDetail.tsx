@@ -291,6 +291,12 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
               <p className="text-sm text-muted-foreground">Posted At</p>
               <p className="font-medium">{new Date(payment.postedAt).toLocaleString()}</p>
             </div>
+            {payment.method !== "gcash" && (
+              <div>
+                <p className="text-sm text-muted-foreground">Proof Attachment Path</p>
+                <p className="font-medium break-all">{payment.proofAttachmentPath ?? "—"}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

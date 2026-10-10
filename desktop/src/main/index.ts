@@ -157,6 +157,7 @@ const IPC_RECEIVABLES_GET_SUSPENSION_CANDIDATES = "receivables:get-suspension-ca
 const IPC_REPORTS_EXPORT = "reports:export";
 const IPC_REPORTS_GET_LEDGER = "reports:get-ledger";
 const IPC_REPORTS_GET_SOA = "reports:get-soa";
+const IPC_FILES_SELECT_PROOF = "files:select-proof";
 
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
@@ -1316,6 +1317,20 @@ function registerIpcHandlers(): void {
       throw new Error("No valid session");
     }
     return apiRequest<SoaResponse>(`/api/v1/reports/soa/${serviceAccountId}`, { method: "GET", token });
+  });
+
+  // Native file picker for recording where a payment proof is filed. Only
+  // the chosen path is returned — nothing is read, uploaded, or copied.
+  ipcMain.handle(IPC_FILES_SELECT_PROOF, async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [
+        { name: "Proof of payment", extensions: ["pdf", "png", "jpg", "jpeg", "webp", "heic"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0]!;
   });
 }
 

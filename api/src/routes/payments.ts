@@ -46,6 +46,9 @@ const createPaymentSchema = z.object({
   paymentDate: dateString.optional(),
   receiptNumber: z.string().trim().max(50).optional(),
   referenceNumber: z.string().trim().max(100).optional(),
+  // Non-GCash proof-of-payment reference only; GCash payments carry their
+  // own proofAttachmentPath inside the gcash object below.
+  proofAttachmentPath: z.string().trim().max(500).optional(),
   gcash: z
     .object({
       gcashReferenceNumber: z.string().trim().min(1).max(100),
@@ -203,6 +206,9 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     if (parsed.data.method === "gcash" && !parsed.data.gcash) {
       return reply.code(400).send({ message: "gcash.gcashReferenceNumber is required for GCash payments" });
     }
+    if (parsed.data.method === "gcash" && parsed.data.proofAttachmentPath) {
+      return reply.code(400).send({ message: "Use gcash.proofAttachmentPath for GCash payments" });
+    }
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -242,6 +248,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
             paymentDate: parsed.data.paymentDate ? new Date(parsed.data.paymentDate) : new Date(),
             receiptNumber: parsed.data.receiptNumber ?? null,
             referenceNumber: parsed.data.referenceNumber ?? null,
+            proofAttachmentPath: isGcash ? null : (parsed.data.proofAttachmentPath ?? null),
             status: isGcash ? "pending" : "posted",
             postedByUserId: request.currentUser!.id,
           })

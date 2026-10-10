@@ -75,10 +75,16 @@ export function PaymentForm({ open, onClose, onSuccess }: PaymentFormProps) {
     reset,
     watch,
     setError,
+    setValue,
     formState: { errors },
   } = useForm<PaymentFormData>({ defaultValues: EMPTY_FORM });
 
   const method = watch("method");
+
+  const handleBrowseProof = async () => {
+    const path = await window.bcis.files.selectProofFile();
+    if (path) setValue("proofAttachmentPath", path);
+  };
 
   React.useEffect(() => {
     if (open) reset(EMPTY_FORM);
@@ -117,6 +123,7 @@ export function PaymentForm({ open, onClose, onSuccess }: PaymentFormProps) {
       return;
     }
 
+    const isGcash = data.method === "gcash";
     const payload: CreatePaymentRequest = {
       serviceAccountId: data.serviceAccountId,
       method: data.method,
@@ -124,13 +131,13 @@ export function PaymentForm({ open, onClose, onSuccess }: PaymentFormProps) {
       paymentDate: data.paymentDate || undefined,
       receiptNumber: data.receiptNumber.trim() || undefined,
       referenceNumber: data.referenceNumber.trim() || undefined,
-      gcash:
-        data.method === "gcash"
-          ? {
-              gcashReferenceNumber: data.gcashReferenceNumber.trim(),
-              proofAttachmentPath: data.proofAttachmentPath.trim() || undefined,
-            }
-          : undefined,
+      proofAttachmentPath: !isGcash ? data.proofAttachmentPath.trim() || undefined : undefined,
+      gcash: isGcash
+        ? {
+            gcashReferenceNumber: data.gcashReferenceNumber.trim(),
+            proofAttachmentPath: data.proofAttachmentPath.trim() || undefined,
+          }
+        : undefined,
     };
 
     mutation.mutate(payload);
@@ -201,15 +208,32 @@ export function PaymentForm({ open, onClose, onSuccess }: PaymentFormProps) {
               error={getErrorMessage(errors.gcashReferenceNumber)}
               placeholder="e.g. 1234567890123"
             />
-            <Input
-              label="Proof Attachment Path"
-              {...register("proofAttachmentPath", { maxLength: 500 })}
-              error={getErrorMessage(errors.proofAttachmentPath)}
-              placeholder="Path or reference to the screenshot/receipt on file"
-              helperText="Record where the proof is filed; this screen does not upload files."
-            />
           </div>
         )}
+
+        <div className="space-y-1.5">
+          <label htmlFor="proof-attachment-path" className="text-sm font-medium leading-none">
+            Proof Attachment Path
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="proof-attachment-path"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              {...register("proofAttachmentPath", { maxLength: 500 })}
+              placeholder="Path or reference to the screenshot/receipt on file"
+            />
+            <Button type="button" variant="outline" onClick={handleBrowseProof}>
+              Browse…
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Pick the file to record where it's filed; this only saves the path as a reference — it is
+            not uploaded or copied anywhere.
+          </p>
+          {getErrorMessage(errors.proofAttachmentPath) && (
+            <p className="text-sm text-destructive" role="alert">{getErrorMessage(errors.proofAttachmentPath)}</p>
+          )}
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Input label="Payment Date" type="date" {...register("paymentDate")} />

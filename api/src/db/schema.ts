@@ -298,6 +298,10 @@ export const payments = pgTable("payments", {
   paymentDate: date("payment_date", { mode: "date" }).notNull(),
   receiptNumber: varchar("receipt_number", { length: 50 }),
   referenceNumber: varchar("reference_number", { length: 100 }),
+  // Non-GCash proof-of-payment reference (bank slip, cheque photo, etc.).
+  // GCash payments use gcashPaymentDetails.proofAttachmentPath instead,
+  // since that field is tied to the verification workflow.
+  proofAttachmentPath: varchar("proof_attachment_path", { length: 500 }),
   status: paymentStatusEnum("status").notNull().default("posted"),
   postedByUserId: bigint("posted_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
   postedAt: timestamp("posted_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
