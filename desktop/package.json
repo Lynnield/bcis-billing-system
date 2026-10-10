@@ -5,6 +5,7 @@
   "type": "module",
   "description": "BCIS Subscription Billing and Collection System - Desktop Application",
   "main": "./out/main/index.js",
+  "author": "Bukidnon Cable and Internet Services",
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
@@ -17,6 +18,32 @@
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:dir": "electron-vite build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.bcis.billing",
+    "productName": "BCIS Billing",
+    "copyright": "Copyright (c) 2026 Bukidnon Cable and Internet Services",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

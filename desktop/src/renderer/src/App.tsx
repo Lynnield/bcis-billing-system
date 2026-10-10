@@ -1,4 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+// HashRouter, not BrowserRouter: the production build is loaded via
+// file:// (no HTTP server), where the History API's pathname-based routing
+// that BrowserRouter depends on doesn't apply cleanly on Windows — mounting
+// it rewrites location.href to the filesystem root (file:///C:/), breaking
+// every relative asset resolution and leaving a blank window with no error
+// anywhere. HashRouter's #/route fragment works identically under file://
+// and http://, which is why it's the standard choice for Electron apps.
+import { HashRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/auth/LoginForm";
@@ -103,11 +110,11 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <AppContent />
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
     </QueryClientProvider>
   );
 }

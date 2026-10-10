@@ -109,19 +109,30 @@ VITE_API_BASE_URL=http://<server-lan-ip>:3000
 ```bash
 npm install
 npm run dev     # development mode
-# or, for a packaged build:
-npm run build
+# or, to build an installer:
 npm run dist:win
 ```
 
-> **Packaging note**: `npm run dist:win` invokes `electron-builder`, which
-> needs an `appId`, icon, and NSIS target configured (typically a `build`
-> block in `desktop/package.json` or a separate `electron-builder.yml`).
-> That packaging configuration has not been added yet — `npm run dev` /
-> `npm run build` + `npm run preview` is the currently verified run path for
-> all three clients. Adding installer packaging is a mechanical follow-up
-> (electron-builder's own quick-start covers it) and does not change any
-> application code.
+`npm run dist:win` produces `desktop/release/BCIS Billing-Setup-<version>.exe`
+(NSIS installer, unsigned — no code-signing certificate is configured) and
+an unpacked copy at `desktop/release/win-unpacked/`. Run the installer on
+each client machine; it offers a destination folder and desktop/Start Menu
+shortcuts. `.env` must still be set correctly on each machine before first
+launch (see above) — the installer does not prompt for configuration.
+
+> **Windows `file://` gotcha, already fixed**: a packaged Electron + Vite +
+> React Router app can render a permanently blank window on Windows even
+> though `npm run dev` works perfectly — two independent causes, both
+> present in this project until they were found and fixed: (1) Vite's
+> default absolute asset base (`/assets/...`) resolves against the
+> filesystem root instead of the app directory when the page is loaded via
+> `file://`, and (2) `BrowserRouter`'s History-API routing corrupts
+> `location.href` to the drive root the moment it mounts under `file://`.
+> Fixed via `base: "./"` in `electron.vite.config.ts` and switching to
+> `HashRouter` in `App.tsx`. If this stack is ever changed, re-verify by
+> running `npm run dist:win` and launching the actual
+> `release/win-unpacked/BCIS Billing.exe` — not just `npm run dev`, which
+> never exercises this code path.
 
 ## 5. Verifying Three-Client Concurrency (AT-09)
 
