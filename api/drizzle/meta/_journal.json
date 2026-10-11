@@ -43,6 +43,13 @@
       "when": 1791706731639,
       "tag": "0005_document_number_sequences",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791707366512,
+      "tag": "0006_collection_batch_lifecycle",
+      "breakpoints": true
     }
   ]
 }

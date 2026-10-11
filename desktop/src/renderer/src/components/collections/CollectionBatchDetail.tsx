@@ -8,38 +8,65 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Modal } from "@/components/ui/Modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useToast } from "@/lib/toast";
-import { getCollectionBatchById, addPaymentToBatch, remitCollectionBatch, reconcileCollectionBatch } from "@/lib/collection-batch-api";
-import type { CollectionBatchStatus } from "@/shared/types";
-import { ArrowLeft, Plus, Banknote, CheckCircle2, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import {
+  getCollectionBatchById,
+  addPaymentToBatch,
+  remitCollectionBatch,
+  reconcileCollectionBatch,
+  submitCollectionBatch,
+  closeCollectionBatch,
+} from "@/lib/collection-batch-api";
+import { batchStatusBadge, batchStatusLabel } from "./batch-status";
+import { ArrowLeft, Plus, Banknote, CheckCircle2, Loader2, Send, Lock } from "lucide-react";
 
-const statusBadgeVariant: Record<CollectionBatchStatus, "default" | "success" | "warning" | "secondary"> = {
-  open: "default",
-  closed: "secondary",
-  remitted: "warning",
-  reconciled: "success",
-};
+// Matches api/src/routes/collection-batches.ts CLOSE_ROLES (UX only).
+const CLOSE_ROLES = ["Owner / Super Admin", "Administrator", "Collection Supervisor"];
 
 interface CollectionBatchDetailProps {
   batchId: number;
   onBack: () => void;
 }
 
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "danger" | "success" | "muted" }) {
+  const toneClass = tone === "danger" ? "text-destructive" : tone === "success" ? "text-success" : tone === "muted" ? "text-muted-foreground" : "";
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+      </CardHeader>
+      <CardContent className={`text-xl font-semibold tabular-nums text-right ${toneClass}`}>{value}</CardContent>
+    </Card>
+  );
+}
+
 export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetailProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { success: showSuccess, error: showError } = useToast();
+  const canClose = !!user && user.roles.some((r) => CLOSE_ROLES.includes(r));
 
   const [addPaymentOpen, setAddPaymentOpen] = React.useState(false);
   const [paymentIdInput, setPaymentIdInput] = React.useState("");
   const [remitOpen, setRemitOpen] = React.useState(false);
   const [remittedAmount, setRemittedAmount] = React.useState("");
-  const [reconciliationNotes, setReconciliationNotes] = React.useState("");
+  const [remitNotes, setRemitNotes] = React.useState("");
+  const [reconcileOpen, setReconcileOpen] = React.useState(false);
+  const [acknowledged, setAcknowledged] = React.useState(false);
+  const [reconcileNotes, setReconcileNotes] = React.useState("");
+  const [closeOpen, setCloseOpen] = React.useState(false);
+  const [closeNotes, setCloseNotes] = React.useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["collection-batch", batchId],
     queryFn: () => getCollectionBatchById(batchId),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["collection-batch", batchId] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["collection-batch", batchId] });
+    queryClient.invalidateQueries({ queryKey: ["collection-batches"] });
+  };
+  const fail = (title: string) => (err: unknown) => showError(title, err instanceof Error ? err.message : "Unknown error");
 
   const addPaymentMutation = useMutation({
     mutationFn: (paymentId: number) => addPaymentToBatch(batchId, paymentId),
@@ -49,30 +76,53 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
       setPaymentIdInput("");
       invalidate();
     },
-    onError: (err: unknown) => showError("Could not add payment", err instanceof Error ? err.message : "Unknown error"),
+    onError: fail("Could not add payment"),
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: () => submitCollectionBatch(batchId),
+    onSuccess: () => {
+      showSuccess("Batch submitted", "No further collections can be recorded on it.");
+      invalidate();
+    },
+    onError: fail("Submit failed"),
   });
 
   const remitMutation = useMutation({
-    mutationFn: () => remitCollectionBatch(batchId, { remittedAmount, reconciliationNotes: reconciliationNotes.trim() || undefined }),
+    mutationFn: () => remitCollectionBatch(batchId, { remittedAmount: remittedAmount.trim(), reconciliationNotes: remitNotes.trim() || undefined }),
     onSuccess: (result) => {
-      const shortage = Number(result.data.shortageAmount);
-      const overage = Number(result.data.overageAmount);
-      if (shortage > 0) showError("Remittance recorded — shortage detected", `₱${result.data.shortageAmount} short`);
-      else if (overage > 0) showSuccess("Remittance recorded — overage detected", `₱${result.data.overageAmount} over`);
+      const r = result.data;
+      if (r.shortageAmount !== "0.00") showError("Remittance recorded — shortage detected", `₱${r.shortageAmount} short`);
+      else if (r.overageAmount !== "0.00") showSuccess("Remittance recorded — overage detected", `₱${r.overageAmount} over`);
       else showSuccess("Remittance recorded — balanced");
       setRemitOpen(false);
       invalidate();
     },
-    onError: (err: unknown) => showError("Remittance failed", err instanceof Error ? err.message : "Unknown error"),
+    onError: fail("Remittance failed"),
   });
 
   const reconcileMutation = useMutation({
-    mutationFn: () => reconcileCollectionBatch(batchId),
+    mutationFn: () =>
+      reconcileCollectionBatch(batchId, {
+        ...(acknowledged ? { acknowledgeDifference: true } : {}),
+        ...(reconcileNotes.trim() ? { notes: reconcileNotes.trim() } : {}),
+      }),
     onSuccess: () => {
-      showSuccess("Batch reconciled and closed");
+      showSuccess("Batch reconciled");
+      setReconcileOpen(false);
       invalidate();
     },
-    onError: (err: unknown) => showError("Reconciliation failed", err instanceof Error ? err.message : "Unknown error"),
+    onError: fail("Reconciliation failed"),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: () => closeCollectionBatch(batchId, { confirm: true, ...(closeNotes.trim() ? { notes: closeNotes.trim() } : {}) }),
+    onSuccess: () => {
+      showSuccess("Batch closed");
+      setCloseOpen(false);
+      invalidate();
+    },
+    onError: fail("Close failed"),
   });
 
   if (isLoading) {
@@ -106,6 +156,11 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
   }
 
   const batch = data.data;
+  const sum = batch.summary;
+  const collecting = batch.status === "open" || batch.status === "in_progress";
+  const hasDifference = batch.shortageAmount !== "0.00" || batch.overageAmount !== "0.00";
+  const differenceLabel =
+    batch.shortageAmount !== "0.00" ? `Shortage of ₱${batch.shortageAmount}` : `Overage of ₱${batch.overageAmount}`;
 
   return (
     <div className="space-y-4">
@@ -114,8 +169,8 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Badge variant={statusBadgeVariant[batch.status]} className="text-sm">
-          {batch.status}
+        <Badge variant={batchStatusBadge[batch.status]} className="text-sm">
+          {batchStatusLabel[batch.status]}
         </Badge>
       </div>
 
@@ -126,67 +181,86 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
         </p>
       </div>
 
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Collection</h3>
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Expected</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-semibold tabular-nums">₱{batch.expectedAmountComputed}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Remitted</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-semibold tabular-nums">₱{batch.remittedAmount}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Shortage</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-semibold tabular-nums text-destructive">₱{batch.shortageAmount}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overage</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-semibold tabular-nums text-success">₱{batch.overageAmount}</CardContent>
-        </Card>
+        <Stat label="Expected Receivable (route)" value={`₱${sum.expectedReceivable}`} />
+        <Stat label="Cash Collected" value={`₱${sum.cashCollected}`} />
+        <Stat label="GCash / Non-cash Collected" value={`₱${sum.nonCashCollected}`} />
+        <Stat label="Uncollected" value={`₱${sum.uncollected}`} tone="muted" />
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Accounts collected: <span className="font-medium tabular-nums">{sum.accountsCollected}</span> of{" "}
+        <span className="font-medium tabular-nums">{sum.accountsOnRoute}</span> on the route at batch open.
+      </p>
+
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cash Reconciliation</h3>
+      <div className="grid gap-4 md:grid-cols-4">
+        <Stat label="Expected Cash" value={`₱${sum.expectedCash}`} />
+        <Stat label="Remitted Cash" value={sum.remittedCash === null ? "—" : `₱${sum.remittedCash}`} />
+        <Stat label="Shortage" value={`₱${batch.shortageAmount}`} tone={batch.shortageAmount !== "0.00" ? "danger" : undefined} />
+        <Stat label="Overage" value={`₱${batch.overageAmount}`} tone={batch.overageAmount !== "0.00" ? "success" : undefined} />
       </div>
 
-      <div className="flex gap-2">
-        {batch.status === "open" && (
+      <div className="flex flex-wrap gap-2">
+        {collecting && (
           <>
             <Button variant="outline" onClick={() => setAddPaymentOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Payment
             </Button>
-            <Button onClick={() => { setRemittedAmount(batch.expectedAmountComputed); setRemitOpen(true); }}>
-              <Banknote className="mr-2 h-4 w-4" />
-              Record Remittance
+            <Button variant="outline" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
+              <Send className="mr-2 h-4 w-4" />
+              Submit Batch
             </Button>
           </>
         )}
-        {batch.status === "closed" && (
-          <Button onClick={() => { setRemittedAmount(batch.expectedAmountComputed); setRemitOpen(true); }}>
+        {(collecting || batch.status === "submitted") && (
+          <Button
+            onClick={() => {
+              setRemittedAmount(sum.expectedCash);
+              setRemitOpen(true);
+            }}
+          >
             <Banknote className="mr-2 h-4 w-4" />
             Record Remittance
           </Button>
         )}
         {batch.status === "remitted" && (
-          <Button onClick={() => reconcileMutation.mutate()} disabled={reconcileMutation.isPending}>
-            {reconcileMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-            Confirm Reconciliation
+          <Button
+            onClick={() => {
+              setAcknowledged(false);
+              setReconcileNotes("");
+              setReconcileOpen(true);
+            }}
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Reconcile
+          </Button>
+        )}
+        {batch.status === "reconciled" && (
+          <Button onClick={() => setCloseOpen(true)} disabled={!canClose}>
+            <Lock className="mr-2 h-4 w-4" />
+            Close Batch
           </Button>
         )}
       </div>
 
-      {batch.status === "remitted" && (Number(batch.shortageAmount) > 0 || Number(batch.overageAmount) > 0) && (
+      {hasDifference && batch.status !== "open" && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
-          <p className="font-medium text-warning">
-            {Number(batch.shortageAmount) > 0 ? `Shortage of ₱${batch.shortageAmount}` : `Overage of ₱${batch.overageAmount}`} must be reviewed before this batch can be closed as reconciled.
+          <p className="font-medium text-warning">Exception: {differenceLabel}</p>
+          <p className="text-muted-foreground mt-1">
+            {batch.status === "remitted"
+              ? "This difference must be acknowledged with an explanation before the batch can be reconciled."
+              : "Recorded and preserved on this batch; it is never reset to balanced."}
           </p>
           {batch.reconciliationNotes && <p className="mt-1 text-muted-foreground">Notes: {batch.reconciliationNotes}</p>}
         </div>
+      )}
+      {batch.status === "closed" && (
+        <p className="text-sm text-muted-foreground">
+          Closed {batch.closedAt ? new Date(batch.closedAt).toLocaleString() : ""}
+          {batch.closingNotes ? ` — ${batch.closingNotes}` : ""}
+        </p>
       )}
 
       <div className="rounded-lg border">
@@ -196,7 +270,7 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
               <TableHead>Payment ID</TableHead>
               <TableHead>Service Account</TableHead>
               <TableHead>Method</TableHead>
-              <TableHead>Amount</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
@@ -213,7 +287,7 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
                 <TableRow key={p.paymentId}>
                   <TableCell className="font-mono">#{p.paymentId}</TableCell>
                   <TableCell className="font-mono">{p.serviceAccountId}</TableCell>
-                  <TableCell>{p.method}</TableCell>
+                  <TableCell>{p.method === "cash" ? "Cash" : p.method === "gcash" ? "GCash (non-cash)" : `${p.method} (non-cash)`}</TableCell>
                   <TableCell className="text-right tabular-nums">₱{p.amount}</TableCell>
                   <TableCell>{new Date(p.paymentDate).toLocaleDateString()}</TableCell>
                   <TableCell>
@@ -236,30 +310,20 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
             <Button variant="outline" onClick={() => setAddPaymentOpen(false)} disabled={addPaymentMutation.isPending}>
               Cancel
             </Button>
-            <Button
-              onClick={() => addPaymentMutation.mutate(Number(paymentIdInput))}
-              disabled={addPaymentMutation.isPending || !paymentIdInput.trim()}
-            >
+            <Button onClick={() => addPaymentMutation.mutate(Number(paymentIdInput))} disabled={addPaymentMutation.isPending || !paymentIdInput.trim()}>
               {addPaymentMutation.isPending ? "Adding..." : "Add"}
             </Button>
           </>
         }
       >
-        <Input
-          label="Payment ID *"
-          type="number"
-          min="1"
-          value={paymentIdInput}
-          onChange={(e) => setPaymentIdInput(e.target.value)}
-          placeholder="e.g. 42"
-        />
+        <Input label="Payment ID *" type="number" min="1" value={paymentIdInput} onChange={(e) => setPaymentIdInput(e.target.value)} placeholder="e.g. 42" />
       </Modal>
 
       <Modal
         open={remitOpen}
         onClose={() => !remitMutation.isPending && setRemitOpen(false)}
         title="Record Remittance"
-        description="Enter the actual Cash the collector turned in. Shortage/overage is computed automatically against the expected total and is never hidden."
+        description="Enter the actual Cash the collector turned in. Shortage/overage is computed against expected Cash only — GCash and other non-cash payments never pass through the collector."
         footer={
           <>
             <Button variant="outline" onClick={() => setRemitOpen(false)} disabled={remitMutation.isPending}>
@@ -273,21 +337,71 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
       >
         <div className="space-y-4">
           <Input
-            label="Remitted Amount *"
+            label="Remitted Cash *"
             inputMode="decimal"
             value={remittedAmount}
             onChange={(e) => setRemittedAmount(e.target.value)}
             placeholder="0.00"
-            helperText={`Expected: ₱${batch.expectedAmountComputed}`}
+            helperText={`Expected Cash: ₱${sum.expectedCash}`}
           />
+          <Textarea label="Notes" value={remitNotes} onChange={(e) => setRemitNotes(e.target.value)} placeholder="Optional notes" rows={3} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={reconcileOpen}
+        onClose={() => !reconcileMutation.isPending && setReconcileOpen(false)}
+        title="Reconcile Batch"
+        description={hasDifference ? `${differenceLabel}. It stays on record; reconciling only confirms it has been reviewed.` : "Expected and remitted Cash match."}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setReconcileOpen(false)} disabled={reconcileMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => reconcileMutation.mutate()}
+              disabled={reconcileMutation.isPending || (hasDifference && (!acknowledged || !reconcileNotes.trim()))}
+            >
+              {reconcileMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirm Reconciliation
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {hasDifference && (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+              I have reviewed the {batch.shortageAmount !== "0.00" ? "shortage" : "overage"} and it is recorded as an exception, not as balanced.
+            </label>
+          )}
           <Textarea
-            label="Notes"
-            value={reconciliationNotes}
-            onChange={(e) => setReconciliationNotes(e.target.value)}
-            placeholder="Optional reconciliation notes"
+            label={hasDifference ? "Explanation *" : "Notes"}
+            value={reconcileNotes}
+            onChange={(e) => setReconcileNotes(e.target.value)}
+            placeholder={hasDifference ? "e.g. Collector to repay ₱500 from next payout" : "Optional"}
             rows={3}
           />
         </div>
+      </Modal>
+
+      <Modal
+        open={closeOpen}
+        onClose={() => !closeMutation.isPending && setCloseOpen(false)}
+        title="Close Batch"
+        description="Closing is the final sign-off. A closed batch cannot be changed."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCloseOpen(false)} disabled={closeMutation.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending}>
+              {closeMutation.isPending ? "Closing..." : "Confirm Close"}
+            </Button>
+          </>
+        }
+      >
+        <Textarea label="Notes" value={closeNotes} onChange={(e) => setCloseNotes(e.target.value)} placeholder="Optional closing notes" rows={3} />
       </Modal>
     </div>
   );

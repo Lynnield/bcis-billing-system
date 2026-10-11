@@ -155,14 +155,14 @@ describe("collection-batch-api IPC wrappers", () => {
     await createCollectionBatch({ collectorId: 9, batchDate: "2026-10-10" });
     await addPaymentToBatch(3, 99);
     await remitCollectionBatch(3, { remittedAmount: "500.00" });
-    await reconcileCollectionBatch(3);
+    await reconcileCollectionBatch(3, { acknowledgeDifference: true, notes: "Short 500" });
 
     expect(getList).toHaveBeenCalledWith({ page: 1, status: "open" });
     expect(getById).toHaveBeenCalledWith(3);
     expect(create).toHaveBeenCalledWith({ collectorId: 9, batchDate: "2026-10-10" });
     expect(addPayment).toHaveBeenCalledWith(3, 99);
     expect(remit).toHaveBeenCalledWith(3, { remittedAmount: "500.00" });
-    expect(reconcile).toHaveBeenCalledWith(3);
+    expect(reconcile).toHaveBeenCalledWith(3, { acknowledgeDifference: true, notes: "Short 500" });
   });
 });
 
@@ -302,8 +302,8 @@ describe("Newer shared type shapes", () => {
   });
 
   it("CollectionBatchStatus covers the full OPEN->CLOSED lifecycle (3.8)", async () => {
-    const statuses: Array<import("@shared/types").CollectionBatchStatus> = ["open", "closed", "remitted", "reconciled"];
-    expect(statuses).toHaveLength(4);
+    const statuses: Array<import("@shared/types").CollectionBatchStatus> = ["open", "in_progress", "submitted", "remitted", "reconciled", "closed"];
+    expect(statuses).toHaveLength(6);
   });
 
   it("UserListRow and CreateUserRequest match the backend contract", async () => {

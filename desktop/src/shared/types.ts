@@ -486,7 +486,7 @@ export interface UpdateCollectorRequest {
 }
 
 // Collection batches (matching api/src/routes/collection-batches.ts)
-export type CollectionBatchStatus = "open" | "closed" | "remitted" | "reconciled";
+export type CollectionBatchStatus = "open" | "in_progress" | "submitted" | "remitted" | "reconciled" | "closed";
 
 export interface CollectionBatch {
   id: number;
@@ -498,9 +498,37 @@ export interface CollectionBatch {
   shortageAmount: string;
   overageAmount: string;
   reconciliationNotes: string | null;
+  expectedReceivable: string;
+  submittedAt: string | null;
   reconciledAt: string | null;
+  reconciledByUserId: number | null;
+  closedAt: string | null;
+  closedByUserId: number | null;
+  closingNotes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CollectionBatchSummary {
+  expectedReceivable: string;
+  cashCollected: string;
+  nonCashCollected: string;
+  uncollected: string;
+  accountsOnRoute: number;
+  accountsCollected: number;
+  expectedCash: string;
+  remittedCash: string | null;
+  difference: string | null;
+}
+
+export interface ReconcileBatchRequest {
+  acknowledgeDifference?: boolean;
+  notes?: string;
+}
+
+export interface CloseBatchRequest {
+  confirm: true;
+  notes?: string;
 }
 
 export interface CollectionBatchPaymentRow {
@@ -515,7 +543,9 @@ export interface CollectionBatchPaymentRow {
 export interface CollectionBatchDetail extends CollectionBatch {
   collector: { id: number; fullName: string; status: CollectorStatus } | null;
   payments: CollectionBatchPaymentRow[];
+  routeAccounts: Array<{ serviceAccountId: number; serviceNumber: string; balanceDue: string }>;
   expectedAmountComputed: string;
+  summary: CollectionBatchSummary;
 }
 
 export interface CollectionBatchListResponse {
@@ -1188,8 +1218,12 @@ export interface BcisDesktopApi {
     addPayment: (batchId: number, paymentId: number) => Promise<CollectionBatchDetailResponse>;
     /** Record the collector's remittance; computes shortage/overage automatically */
     remit: (id: number, data: RemitBatchRequest) => Promise<CollectionBatchDetailResponse>;
-    /** Close out a remitted batch after reviewing any shortage/overage */
-    reconcile: (id: number) => Promise<CollectionBatchDetailResponse>;
+    /** Collector turned in: no more collections can be recorded */
+    submit: (id: number) => Promise<CollectionBatchDetailResponse>;
+    /** Reconcile a remitted batch; a shortage/overage must be acknowledged with notes */
+    reconcile: (id: number, data: ReconcileBatchRequest) => Promise<CollectionBatchDetailResponse>;
+    /** Final authorized sign-off on a reconciled batch */
+    close: (id: number, data: CloseBatchRequest) => Promise<CollectionBatchDetailResponse>;
   };
   invoices: {
     /** Get paginated list of invoices */

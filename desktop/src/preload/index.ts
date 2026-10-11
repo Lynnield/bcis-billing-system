@@ -71,6 +71,8 @@ import type {
   CreateCollectionBatchRequest,
   RemitBatchRequest,
   CollectionBatchStatus,
+  ReconcileBatchRequest,
+  CloseBatchRequest,
   ReceivableInvoicesResponse,
   AgingSummaryResponse,
   SuspensionCandidatesResponse,
@@ -195,7 +197,11 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("collection-batches:add-payment", { batchId, paymentId }),
     remit: (id: number, data: RemitBatchRequest): Promise<CollectionBatchDetailResponse> =>
       ipcRenderer.invoke("collection-batches:remit", { id, data }),
-    reconcile: (id: number): Promise<CollectionBatchDetailResponse> => ipcRenderer.invoke("collection-batches:reconcile", id),
+    submit: (id: number): Promise<CollectionBatchDetailResponse> => ipcRenderer.invoke("collection-batches:submit", id),
+    reconcile: (id: number, data: ReconcileBatchRequest): Promise<CollectionBatchDetailResponse> =>
+      ipcRenderer.invoke("collection-batches:reconcile", { id, data }),
+    close: (id: number, data: CloseBatchRequest): Promise<CollectionBatchDetailResponse> =>
+      ipcRenderer.invoke("collection-batches:close", { id, data }),
   },
   invoices: {
     getList: (params: {

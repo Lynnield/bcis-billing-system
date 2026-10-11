@@ -9,22 +9,15 @@ import { getCollectionBatches } from "@/lib/collection-batch-api";
 import { getCollectors } from "@/lib/collection-area-api";
 import { CollectionBatchForm } from "./CollectionBatchForm";
 import type { CollectionBatchStatus } from "@/shared/types";
+import { batchStatusBadge, batchStatusLabel } from "./batch-status";
 import { Plus, Eye } from "lucide-react";
 
 const STATUS_OPTIONS: Array<{ value: CollectionBatchStatus | "all"; label: string }> = [
   { value: "all", label: "All Statuses" },
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "remitted", label: "Remitted" },
-  { value: "reconciled", label: "Reconciled" },
+  ...(Object.keys(batchStatusLabel) as CollectionBatchStatus[]).map((s) => ({ value: s, label: batchStatusLabel[s] })),
 ];
 
-const statusBadgeVariant: Record<CollectionBatchStatus, "default" | "success" | "warning" | "secondary"> = {
-  open: "default",
-  closed: "secondary",
-  remitted: "warning",
-  reconciled: "success",
-};
+const statusBadgeVariant = batchStatusBadge;
 
 interface CollectionBatchListProps {
   onViewBatch: (batchId: number) => void;
@@ -141,7 +134,7 @@ export function CollectionBatchList({ onViewBatch }: CollectionBatchListProps) {
                       {Number(b.overageAmount) > 0 ? `₱${b.overageAmount}` : "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant[b.status]}>{b.status}</Badge>
+                      <Badge variant={statusBadgeVariant[b.status]}>{batchStatusLabel[b.status]}</Badge>
                     </TableCell>
                     <TableCell>
                       <Button variant="outline" size="icon" onClick={() => onViewBatch(b.id)} aria-label={`View batch ${b.id}`}>

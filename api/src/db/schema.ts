@@ -78,11 +78,15 @@ export const gcashVerificationStatusEnum = pgEnum("gcash_verification_status", [
   "rejected",
 ]);
 
+// Lifecycle (spec 3.8): open -> in_progress (first collection recorded) ->
+// submitted (collector turned in) -> remitted -> reconciled -> closed.
 export const collectionBatchStatusEnum = pgEnum("collection_batch_status", [
   "open",
-  "closed",
+  "in_progress",
+  "submitted",
   "remitted",
   "reconciled",
+  "closed",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -389,7 +393,14 @@ export const collectionBatches = pgTable("collection_batches", {
   shortageAmount: numeric("shortage_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   overageAmount: numeric("overage_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   reconciliationNotes: text("reconciliation_notes"),
+  // Outstanding balance of the collector route when the batch was opened.
+  expectedReceivable: numeric("expected_receivable", { precision: 14, scale: 2 }).notNull().default("0"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true, mode: "date" }),
   reconciledAt: timestamp("reconciled_at", { withTimezone: true, mode: "date" }),
+  reconciledByUserId: bigint("reconciled_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  closedAt: timestamp("closed_at", { withTimezone: true, mode: "date" }),
+  closedByUserId: bigint("closed_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  closingNotes: text("closing_notes"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (t) => [
@@ -404,6 +415,18 @@ export const collectionBatchPayments = pgTable("collection_batch_payments", {
 }, (t) => [
   unique("collection_batch_payments_pkey").on(t.batchId, t.paymentId),
   uniqueIndex("collection_batch_payments_payment_id_unique").on(t.paymentId),
+]);
+
+// Accounts on the collector route when the batch was opened, with the
+// balance due at that moment (spec 5: batch_accounts).
+export const collectionBatchAccounts = pgTable("collection_batch_accounts", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  batchId: bigint("batch_id", { mode: "number" }).notNull().references(() => collectionBatches.id, { onDelete: "cascade" }),
+  serviceAccountId: bigint("service_account_id", { mode: "number" }).notNull().references(() => serviceAccounts.id, { onDelete: "restrict" }),
+  balanceDue: numeric("balance_due", { precision: 14, scale: 2 }).notNull(),
+}, (t) => [
+  unique("collection_batch_accounts_batch_account_unique").on(t.batchId, t.serviceAccountId),
+  index("collection_batch_accounts_service_account_id_idx").on(t.serviceAccountId),
 ]);
 
 // ---------------------------------------------------------------------------

@@ -738,9 +738,9 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
         remittedAmount: sql<string>`coalesce(sum(${collectionBatches.remittedAmount}), 0)::numeric(14,2)`,
         shortageAmount: sql<string>`coalesce(sum(${collectionBatches.shortageAmount}), 0)::numeric(14,2)`,
         overageAmount: sql<string>`coalesce(sum(${collectionBatches.overageAmount}), 0)::numeric(14,2)`,
-        openCount: sql<number>`count(*) filter (where ${collectionBatches.status} = 'open')::int`,
+        openCount: sql<number>`count(*) filter (where ${collectionBatches.status} in ('open', 'in_progress', 'submitted'))::int`,
         remittedCount: sql<number>`count(*) filter (where ${collectionBatches.status} = 'remitted')::int`,
-        reconciledCount: sql<number>`count(*) filter (where ${collectionBatches.status} = 'reconciled')::int`,
+        reconciledCount: sql<number>`count(*) filter (where ${collectionBatches.status} in ('reconciled', 'closed'))::int`,
       })
       .from(collectionBatches)
       .innerJoin(collectors, eq(collectors.id, collectionBatches.collectorId))
@@ -856,7 +856,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     const [openBatches] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(collectionBatches)
-      .where(eq(collectionBatches.status, "open"));
+      .where(inArray(collectionBatches.status, ["open", "in_progress", "submitted"]));
 
     const [remittanceTotals] = await db
       .select({

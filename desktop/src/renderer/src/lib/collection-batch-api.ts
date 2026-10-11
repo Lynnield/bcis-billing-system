@@ -8,6 +8,8 @@ import type {
   CreateCollectionBatchRequest,
   RemitBatchRequest,
   CollectionBatchStatus,
+  ReconcileBatchRequest,
+  CloseBatchRequest,
 } from "@/shared/types";
 
 export async function getCollectionBatches(params: {
@@ -35,6 +37,14 @@ export async function remitCollectionBatch(id: number, data: RemitBatchRequest):
   return window.bcis.collectionBatches.remit(id, data);
 }
 
-export async function reconcileCollectionBatch(id: number): Promise<CollectionBatchDetailResponse> {
-  return window.bcis.collectionBatches.reconcile(id);
+export async function submitCollectionBatch(id: number): Promise<CollectionBatchDetailResponse> {
+  return window.bcis.collectionBatches.submit(id);
+}
+
+export async function reconcileCollectionBatch(id: number, data: ReconcileBatchRequest = {}): Promise<CollectionBatchDetailResponse> {
+  return window.bcis.collectionBatches.reconcile(id, data);
+}
+
+export async function closeCollectionBatch(id: number, data: CloseBatchRequest): Promise<CollectionBatchDetailResponse> {
+  return window.bcis.collectionBatches.close(id, data);
 }

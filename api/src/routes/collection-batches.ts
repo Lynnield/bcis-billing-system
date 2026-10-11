@@ -1,17 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   auditLogs,
+  collectionBatchAccounts,
   collectionBatches,
   collectionBatchPayments,
   collectors,
   payments,
+  serviceAccounts,
 } from "../db/schema";
 import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
 import { formatCents, parseMoneyToCents } from "../lib/money";
+import { getInvoiceBalances } from "../lib/receivables";
 
 const VIEW_ROLES = [
   ROLE_NAMES.OWNER,
@@ -25,7 +28,13 @@ const VIEW_ROLES = [
 const MANAGE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.CASHIER, ROLE_NAMES.COLLECTION_SUPERVISOR];
 const REMIT_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR, ROLE_NAMES.ACCOUNTING_AUDITOR];
 
-const BATCH_STATUSES = ["open", "closed", "remitted", "reconciled"] as const;
+// Closing a reconciled batch is the final sign-off, kept to supervisors and
+// above (spec 3.8: authorized confirmation before closing).
+const CLOSE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR];
+
+const BATCH_STATUSES = ["open", "in_progress", "submitted", "remitted", "reconciled", "closed"] as const;
+// Statuses in which collections may still be recorded against the batch.
+const COLLECTING = ["open", "in_progress"];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
@@ -45,6 +54,18 @@ const remitSchema = z.object({
   reconciliationNotes: z.string().trim().max(2000).optional(),
 }).strict();
 
+const reconcileSchema = z.object({
+  // Required when the remittance has a shortage or overage, so a difference
+  // can never be reconciled without someone explicitly accepting it.
+  acknowledgeDifference: z.boolean().optional(),
+  notes: z.string().trim().max(2000).optional(),
+}).strict();
+
+const closeSchema = z.object({
+  confirm: z.literal(true),
+  notes: z.string().trim().max(2000).optional(),
+}).strict();
+
 const patchBatchSchema = z.object({
   batchDate: dateString.optional(),
 }).strict();
@@ -58,12 +79,17 @@ function isConflict(err: unknown): boolean {
   return false;
 }
 
-async function computeExpectedCents(batchId: number): Promise<bigint> {
-  const [row] = await db
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Cash the collector must physically remit. GCash, bank transfer and cheque
+// payments never pass through the collector's hands, so they are tracked as
+// non-cash collections and never count toward a shortage.
+async function computeExpectedCents(exec: typeof db | Tx, batchId: number): Promise<bigint> {
+  const [row] = await exec
     .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)::numeric(14,2)` })
     .from(collectionBatchPayments)
     .innerJoin(payments, eq(payments.id, collectionBatchPayments.paymentId))
-    .where(and(eq(collectionBatchPayments.batchId, batchId), eq(payments.status, "posted")));
+    .where(and(eq(collectionBatchPayments.batchId, batchId), eq(payments.status, "posted"), eq(payments.method, "cash")));
   return parseMoneyToCents(row?.total ?? "0") ?? 0n;
 }
 
@@ -85,12 +111,50 @@ async function getBatchDetail(id: number) {
     .innerJoin(payments, eq(payments.id, collectionBatchPayments.paymentId))
     .where(eq(collectionBatchPayments.batchId, id));
 
-  const expected = await computeExpectedCents(id);
+  const expected = await computeExpectedCents(db, id);
+  const routeAccounts = await db
+    .select({
+      serviceAccountId: collectionBatchAccounts.serviceAccountId,
+      serviceNumber: serviceAccounts.serviceNumber,
+      balanceDue: collectionBatchAccounts.balanceDue,
+    })
+    .from(collectionBatchAccounts)
+    .innerJoin(serviceAccounts, eq(serviceAccounts.id, collectionBatchAccounts.serviceAccountId))
+    .where(eq(collectionBatchAccounts.batchId, id));
+
+  let cashCents = 0n;
+  let nonCashCents = 0n;
+  const collectedAccounts = new Set<number>();
+  for (const p of batchPayments) {
+    if (p.status !== "posted") continue;
+    const amt = parseMoneyToCents(p.amount) ?? 0n;
+    if (p.method === "cash") cashCents += amt;
+    else nonCashCents += amt;
+    collectedAccounts.add(p.serviceAccountId);
+  }
+  const expectedReceivable = parseMoneyToCents(batch.expectedReceivable) ?? 0n;
+  const uncollected = expectedReceivable - cashCents - nonCashCents;
+  const remitted = parseMoneyToCents(batch.remittedAmount) ?? 0n;
+  const isRemitted = ["remitted", "reconciled", "closed"].includes(batch.status);
+
   return {
     ...batch,
     collector: collector ? { id: collector.id, fullName: collector.fullName, status: collector.status } : null,
     payments: batchPayments,
+    routeAccounts,
     expectedAmountComputed: formatCents(expected),
+    // Spec 3.8 / 4.3 reconciliation summary.
+    summary: {
+      expectedReceivable: formatCents(expectedReceivable),
+      cashCollected: formatCents(cashCents),
+      nonCashCollected: formatCents(nonCashCents),
+      uncollected: formatCents(uncollected < 0n ? 0n : uncollected),
+      accountsOnRoute: routeAccounts.length,
+      accountsCollected: collectedAccounts.size,
+      expectedCash: formatCents(expected),
+      remittedCash: isRemitted ? formatCents(remitted) : null,
+      difference: isRemitted ? formatCents(remitted - expected) : null,
+    },
   };
 }
 
@@ -99,6 +163,7 @@ class PaymentNotFoundError extends Error {}
 class PaymentNotAssignableError extends Error {}
 class CollectionStateError extends Error {}
 class PaymentAlreadyAssignedError extends Error {}
+class DifferenceNotAcknowledgedError extends Error {}
 
 export default async function collectionBatchRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/collection-batches", { preHandler: [authenticate, requireRoles(...VIEW_ROLES)] }, async (request, reply) => {
@@ -149,25 +214,54 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     if (!collector) return reply.code(400).send({ message: "Collector does not exist" });
     if (collector.status !== "active") return reply.code(400).send({ message: "Collector is not active" });
 
-    const [batch] = await db
-      .insert(collectionBatches)
-      .values({
-        collectorId: collector.id,
-        batchDate: new Date(parsed.data.batchDate),
-        status: "open",
-        expectedAmount: "0.00",
-        remittedAmount: "0.00",
-        shortageAmount: "0.00",
-        overageAmount: "0.00",
-      })
-      .returning();
+    // Snapshot the collector's route: every assigned account with a balance
+    // due right now. This is the batch's expected receivable, fixed at open.
+    const assigned = await db
+      .select({ id: serviceAccounts.id })
+      .from(serviceAccounts)
+      .where(and(eq(serviceAccounts.assignedCollectorId, collector.id), inArray(serviceAccounts.status, ["active", "suspended"])));
+    const route: Array<{ serviceAccountId: number; balanceCents: bigint }> = [];
+    for (const acc of assigned) {
+      const rows = await getInvoiceBalances({ serviceAccountId: acc.id });
+      const due = rows.reduce((t, r) => (r.balanceCents > 0n ? t + r.balanceCents : t), 0n);
+      if (due > 0n) route.push({ serviceAccountId: acc.id, balanceCents: due });
+    }
+    const expectedReceivable = route.reduce((t, r) => t + r.balanceCents, 0n);
 
-    await db.insert(auditLogs).values({
-      actorUserId: request.currentUser!.id,
-      action: "collection_batch.create",
-      entityType: "collection_batch",
-      entityId: batch!.id,
-      metadata: { collectorId: collector.id, batchDate: parsed.data.batchDate },
+    const batch = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(collectionBatches)
+        .values({
+          collectorId: collector.id,
+          batchDate: new Date(parsed.data.batchDate),
+          status: "open",
+          expectedAmount: "0.00",
+          remittedAmount: "0.00",
+          shortageAmount: "0.00",
+          overageAmount: "0.00",
+          expectedReceivable: formatCents(expectedReceivable),
+        })
+        .returning();
+      for (const r of route) {
+        await tx.insert(collectionBatchAccounts).values({
+          batchId: created!.id,
+          serviceAccountId: r.serviceAccountId,
+          balanceDue: formatCents(r.balanceCents),
+        });
+      }
+      await tx.insert(auditLogs).values({
+        actorUserId: request.currentUser!.id,
+        action: "collection_batch.create",
+        entityType: "collection_batch",
+        entityId: created!.id,
+        metadata: {
+          collectorId: collector.id,
+          batchDate: parsed.data.batchDate,
+          routeAccounts: route.length,
+          expectedReceivable: formatCents(expectedReceivable),
+        },
+      });
+      return created!;
     });
 
     return reply.code(201).send({ data: batch });
@@ -182,7 +276,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
 
     const [batch] = await db.select().from(collectionBatches).where(eq(collectionBatches.id, params.data.id)).limit(1);
     if (!batch) return reply.code(404).send({ message: "Collection batch not found" });
-    if (batch.status !== "open") return reply.code(409).send({ message: "Only open batches can be modified" });
+    if (!COLLECTING.includes(batch.status)) return reply.code(409).send({ message: "Only open or in-progress batches can be modified" });
 
     const [updated] = await db
       .update(collectionBatches)
@@ -207,7 +301,9 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
           .for("update")
           .limit(1);
         if (!batch) throw new CollectionNotFoundError();
-        if (batch.status !== "open") throw new CollectionStateError("Payments can only be added to an open batch");
+        if (!COLLECTING.includes(batch.status)) {
+          throw new CollectionStateError("Payments can only be added while the batch is open or in progress");
+        }
 
         const [payment] = await tx.select().from(payments).where(eq(payments.id, parsed.data.paymentId)).limit(1);
         if (!payment) throw new PaymentNotFoundError();
@@ -228,17 +324,13 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
 
         await tx.insert(collectionBatchPayments).values({ batchId: batch.id, paymentId: payment.id });
 
-        // Authoritative expected amount from the batch's posted payments.
-        const [sumRow] = await tx
-          .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)::numeric(14,2)` })
-          .from(collectionBatchPayments)
-          .innerJoin(payments, eq(payments.id, collectionBatchPayments.paymentId))
-          .where(and(eq(collectionBatchPayments.batchId, batch.id), eq(payments.status, "posted")));
-        const expected = parseMoneyToCents(sumRow?.total ?? "0") ?? 0n;
+        // Authoritative expected cash from the batch's posted cash payments.
+        const expected = await computeExpectedCents(tx, batch.id);
 
+        // The first recorded collection moves the batch into the field.
         const [updated] = await tx
           .update(collectionBatches)
-          .set({ expectedAmount: formatCents(expected) })
+          .set({ expectedAmount: formatCents(expected), status: "in_progress" })
           .where(eq(collectionBatches.id, batch.id))
           .returning();
 
@@ -285,16 +377,11 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
           .for("update")
           .limit(1);
         if (!batch) throw new CollectionNotFoundError();
-        if (batch.status !== "open" && batch.status !== "closed") {
+        if (![...COLLECTING, "submitted"].includes(batch.status)) {
           throw new CollectionStateError("Batch has already been remitted or reconciled");
         }
 
-        const [sumRow] = await tx
-          .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)::numeric(14,2)` })
-          .from(collectionBatchPayments)
-          .innerJoin(payments, eq(payments.id, collectionBatchPayments.paymentId))
-          .where(and(eq(collectionBatchPayments.batchId, batch.id), eq(payments.status, "posted")));
-        const expectedCents = parseMoneyToCents(sumRow?.total ?? "0") ?? 0n;
+        const expectedCents = await computeExpectedCents(tx, batch.id);
 
         const diff = remittedCents - expectedCents;
         const shortageCents = diff < 0n ? -diff : 0n;
@@ -308,6 +395,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
             shortageAmount: formatCents(shortageCents),
             overageAmount: formatCents(overageCents),
             status: "remitted",
+            submittedAt: batch.submittedAt ?? new Date(),
             reconciliationNotes: parsed.data.reconciliationNotes ?? null,
           })
           .where(eq(collectionBatches.id, batch.id))
@@ -338,9 +426,45 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     }
   });
 
+  app.post("/api/v1/collection-batches/:id/submit", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [batch] = await tx.select().from(collectionBatches).where(eq(collectionBatches.id, params.data.id)).for("update").limit(1);
+        if (!batch) throw new CollectionNotFoundError();
+        if (!COLLECTING.includes(batch.status)) {
+          throw new CollectionStateError(`Only an open or in-progress batch can be submitted (current status: "${batch.status}")`);
+        }
+        const expected = await computeExpectedCents(tx, batch.id);
+        const [updated] = await tx
+          .update(collectionBatches)
+          .set({ status: "submitted", submittedAt: new Date(), expectedAmount: formatCents(expected) })
+          .where(eq(collectionBatches.id, batch.id))
+          .returning();
+        await tx.insert(auditLogs).values({
+          actorUserId: request.currentUser!.id,
+          action: "collection_batch.submit",
+          entityType: "collection_batch",
+          entityId: batch.id,
+          metadata: { oldStatus: batch.status, newStatus: "submitted", expectedCash: formatCents(expected) },
+        });
+        return updated!;
+      });
+      return reply.send({ data: result });
+    } catch (err) {
+      if (err instanceof CollectionNotFoundError) return reply.code(404).send({ message: "Collection batch not found" });
+      if (err instanceof CollectionStateError) return reply.code(409).send({ message: err.message });
+      throw err;
+    }
+  });
+
   app.post("/api/v1/collection-batches/:id/reconcile", { preHandler: [authenticate, requireRoles(...REMIT_ROLES)] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
+    const body = reconcileSchema.safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: "Invalid reconciliation data", issues: body.error.issues });
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -357,10 +481,20 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
         const shortage = parseMoneyToCents(batch.shortageAmount) ?? 0n;
         const overage = parseMoneyToCents(batch.overageAmount) ?? 0n;
         const outcome = shortage > 0n ? "shortage" : overage > 0n ? "overage" : "balanced";
+        if (outcome !== "balanced" && (!body.data.acknowledgeDifference || !body.data.notes)) {
+          throw new DifferenceNotAcknowledgedError(
+            `This batch has a ${outcome} of ${formatCents(shortage > 0n ? shortage : overage)}. Acknowledge the difference and record an explanation to reconcile it.`,
+          );
+        }
 
         const [updated] = await tx
           .update(collectionBatches)
-          .set({ status: "reconciled", reconciledAt: new Date() })
+          .set({
+            status: "reconciled",
+            reconciledAt: new Date(),
+            reconciledByUserId: request.currentUser!.id,
+            ...(body.data.notes ? { reconciliationNotes: body.data.notes } : {}),
+          })
           .where(eq(collectionBatches.id, batch.id))
           .returning();
 
@@ -375,12 +509,54 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
             shortageAmount: batch.shortageAmount,
             overageAmount: batch.overageAmount,
             outcome,
+            notes: body.data.notes ?? null,
           },
         });
 
         return updated!;
       });
 
+      return reply.send({ data: result });
+    } catch (err) {
+      if (err instanceof CollectionNotFoundError) return reply.code(404).send({ message: "Collection batch not found" });
+      if (err instanceof CollectionStateError) return reply.code(409).send({ message: err.message });
+      if (err instanceof DifferenceNotAcknowledgedError) return reply.code(409).send({ message: err.message, requiresAcknowledgement: true });
+      throw err;
+    }
+  });
+
+  app.post("/api/v1/collection-batches/:id/close", { preHandler: [authenticate, requireRoles(...CLOSE_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
+    const body = closeSchema.safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: "Closing a batch requires explicit confirmation (confirm: true)" });
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [batch] = await tx.select().from(collectionBatches).where(eq(collectionBatches.id, params.data.id)).for("update").limit(1);
+        if (!batch) throw new CollectionNotFoundError();
+        if (batch.status !== "reconciled") {
+          throw new CollectionStateError(`Only a reconciled batch can be closed (current status: "${batch.status}")`);
+        }
+        const [updated] = await tx
+          .update(collectionBatches)
+          .set({ status: "closed", closedAt: new Date(), closedByUserId: request.currentUser!.id, closingNotes: body.data.notes ?? null })
+          .where(eq(collectionBatches.id, batch.id))
+          .returning();
+        await tx.insert(auditLogs).values({
+          actorUserId: request.currentUser!.id,
+          action: "collection_batch.close",
+          entityType: "collection_batch",
+          entityId: batch.id,
+          metadata: {
+            reconciledByUserId: batch.reconciledByUserId,
+            shortageAmount: batch.shortageAmount,
+            overageAmount: batch.overageAmount,
+            notes: body.data.notes ?? null,
+          },
+        });
+        return updated!;
+      });
       return reply.send({ data: result });
     } catch (err) {
       if (err instanceof CollectionNotFoundError) return reply.code(404).send({ message: "Collection batch not found" });

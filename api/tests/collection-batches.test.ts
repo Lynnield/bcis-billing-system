@@ -46,7 +46,7 @@ async function mkUser(username: string, roleName: string) {
 
 let mkPaymentPeriodCounter = 0;
 
-async function mkPayment(amount: string) {
+async function mkPayment(amount: string, method: "cash" | "gcash" | "bank_transfer" = "cash") {
   const [sub] = await db.insert(subscribers).values({ accountNumber: `ACC-CB-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, firstName: "Test", lastName: "Sub", addressLine1: "1 Way", status: "active" }).returning();
   const [svc] = await db.insert(services).values({ type: "internet", name: `SVC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }).returning();
   const [plan] = await db.insert(servicePlans).values({ serviceId: svc!.id, name: `Plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, price: amount }).returning();
@@ -63,7 +63,7 @@ async function mkPayment(amount: string) {
   accountsMeta.push({ accountId: acc!.id, subscriberId: sub!.id, serviceId: svc!.id, planId: plan!.id });
   const [inv] = await db.insert(invoices).values({ invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, serviceAccountId: acc!.id, billingPeriodId: period!.id, issueDate: new Date(), dueDate: new Date(), status: "unpaid", totalAmount: amount }).returning();
   createdInvoiceIds.push(inv!.id);
-  const [pay] = await db.insert(payments).values({ serviceAccountId: acc!.id, method: "cash", amount, paymentDate: new Date(), status: "posted" }).returning();
+  const [pay] = await db.insert(payments).values({ serviceAccountId: acc!.id, method, amount, paymentDate: new Date(), status: "posted" }).returning();
   createdPaymentIds.push(pay!.id);
   // Allocate so it can be posted consistently
   await db.insert(paymentAllocations).values({ paymentId: pay!.id, invoiceId: inv!.id, amount });
@@ -274,5 +274,97 @@ describe("collection batches", () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/collection-batches", headers: auth(tokens.cb_viewer!) });
     expect(JSON.stringify(res.json())).not.toContain("password");
     expect(JSON.stringify(res.json())).not.toContain("token");
+  });
+});
+
+describe("collection batch lifecycle (spec 3.8)", () => {
+  async function add(batchId: number, paymentId: number) {
+    return app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/payments`, headers: auth(tokens.cb_cashier!), payload: { paymentId } });
+  }
+
+  it("open -> in_progress on first collection -> submitted; no collections after submit", async () => {
+    const batchId = (await createBatch()).json().data.id;
+    const added = await add(batchId, (await mkPayment("300.00")).id);
+    expect(added.json().data.status).toBe("in_progress");
+
+    const sub = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/submit`, headers: auth(tokens.cb_cashier!) });
+    expect(sub.statusCode).toBe(200);
+    expect(sub.json().data.status).toBe("submitted");
+
+    const late = await add(batchId, (await mkPayment("50.00")).id);
+    expect(late.statusCode).toBe(409);
+  });
+
+  it("non-cash collections are summarized separately and never create a shortage", async () => {
+    const batchId = (await createBatch()).json().data.id;
+    await add(batchId, (await mkPayment("1000.00", "cash")).id);
+    await add(batchId, (await mkPayment("500.00", "gcash")).id);
+
+    const remit = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/remit`, headers: auth(tokens.cb_supervisor!), payload: { remittedAmount: "1000.00" } });
+    expect(remit.json().data.expectedAmount).toBe("1000.00");
+    expect(remit.json().data.shortageAmount).toBe("0.00");
+
+    const detail = (await app.inject({ method: "GET", url: `/api/v1/collection-batches/${batchId}`, headers: auth(tokens.cb_acct!) })).json().data;
+    expect(detail.summary.cashCollected).toBe("1000.00");
+    expect(detail.summary.nonCashCollected).toBe("500.00");
+    expect(detail.summary.accountsCollected).toBe(2);
+    expect(detail.summary.difference).toBe("0.00");
+  });
+
+  it("AT-08: a shortage cannot be reconciled without acknowledgement, and closing needs confirmation", async () => {
+    const batchId = (await createBatch()).json().data.id;
+    await add(batchId, (await mkPayment("20000.00")).id);
+    const remit = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/remit`, headers: auth(tokens.cb_supervisor!), payload: { remittedAmount: "19500.00" } });
+    expect(remit.json().data.shortageAmount).toBe("500.00");
+
+    const silent = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/reconcile`, headers: auth(tokens.cb_acct!) });
+    expect(silent.statusCode).toBe(409);
+    expect(silent.json().requiresAcknowledgement).toBe(true);
+
+    const acked = await app.inject({
+      method: "POST",
+      url: `/api/v1/collection-batches/${batchId}/reconcile`,
+      headers: auth(tokens.cb_acct!),
+      payload: { acknowledgeDifference: true, notes: "Collector to repay 500.00 from next payout" },
+    });
+    expect(acked.statusCode).toBe(200);
+    expect(acked.json().data.status).toBe("reconciled");
+    // The shortage is preserved, never zeroed.
+    expect(acked.json().data.shortageAmount).toBe("500.00");
+
+    const cashierClose = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/close`, headers: auth(tokens.cb_cashier!), payload: { confirm: true } });
+    expect(cashierClose.statusCode).toBe(403);
+
+    const noConfirm = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/close`, headers: auth(tokens.cb_supervisor!), payload: {} });
+    expect(noConfirm.statusCode).toBe(400);
+
+    const closed = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/close`, headers: auth(tokens.cb_supervisor!), payload: { confirm: true } });
+    expect(closed.statusCode).toBe(200);
+    expect(closed.json().data.status).toBe("closed");
+  });
+
+  it("a batch that is not reconciled cannot be closed", async () => {
+    const batchId = (await createBatch()).json().data.id;
+    const res = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/close`, headers: auth(tokens.cb_owner!), payload: { confirm: true } });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("snapshots the collector's route and expected receivable at open", async () => {
+    // An unpaid 750.00 invoice on an account assigned to this collector.
+    const [sub] = await db.insert(subscribers).values({ accountNumber: `ACC-CBR-${Date.now()}`, firstName: "Route", lastName: "Sub", addressLine1: "2 Way", status: "active" }).returning();
+    const [svc] = await db.insert(services).values({ type: "cable", name: `SVC-R-${Date.now()}` }).returning();
+    const [plan] = await db.insert(servicePlans).values({ serviceId: svc!.id, name: "Route Plan", price: "750.00" }).returning();
+    const [acc] = await db.insert(serviceAccounts).values({ subscriberId: sub!.id, planId: plan!.id, serviceNumber: `S-R-${Date.now()}`, status: "active", assignedCollectorId: collectorId }).returning();
+    accountsMeta.push({ accountId: acc!.id, subscriberId: sub!.id, serviceId: svc!.id, planId: plan!.id });
+    const [period] = await db.insert(billingPeriods).values({ label: `CBR-${Date.now()}`, periodStart: new Date("2033-01-01"), periodEnd: new Date("2033-01-31"), dueDate: new Date("2033-02-05") }).returning();
+    createdPeriodIds.push(period!.id);
+    const [inv] = await db.insert(invoices).values({ invoiceNumber: `INV-R-${Date.now()}`, serviceAccountId: acc!.id, billingPeriodId: period!.id, issueDate: new Date(), dueDate: new Date("2033-02-05"), status: "unpaid", totalAmount: "750.00" }).returning();
+    createdInvoiceIds.push(inv!.id);
+
+    const batchId = (await createBatch()).json().data.id;
+    const detail = (await app.inject({ method: "GET", url: `/api/v1/collection-batches/${batchId}`, headers: auth(tokens.cb_acct!) })).json().data;
+    expect(detail.routeAccounts.map((r: { serviceAccountId: number }) => r.serviceAccountId)).toContain(acc!.id);
+    expect(detail.summary.expectedReceivable).toBe("750.00");
+    expect(detail.summary.uncollected).toBe("750.00");
   });
 });

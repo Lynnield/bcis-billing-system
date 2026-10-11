@@ -60,6 +60,8 @@ import type {
   CreateCollectionBatchRequest,
   RemitBatchRequest,
   CollectionBatchStatus,
+  ReconcileBatchRequest,
+  CloseBatchRequest,
   ReceivableInvoicesResponse,
   AgingSummaryResponse,
   SuspensionCandidatesResponse,
@@ -137,6 +139,8 @@ const IPC_COLLECTION_BATCHES_CREATE = "collection-batches:create";
 const IPC_COLLECTION_BATCHES_ADD_PAYMENT = "collection-batches:add-payment";
 const IPC_COLLECTION_BATCHES_REMIT = "collection-batches:remit";
 const IPC_COLLECTION_BATCHES_RECONCILE = "collection-batches:reconcile";
+const IPC_COLLECTION_BATCHES_SUBMIT = "collection-batches:submit";
+const IPC_COLLECTION_BATCHES_CLOSE = "collection-batches:close";
 const IPC_INVOICES_GET_LIST = "invoices:get-list";
 const IPC_INVOICES_GET_BY_ID = "invoices:get-by-id";
 const IPC_INVOICES_CREATE = "invoices:create";
@@ -924,12 +928,30 @@ function registerIpcHandlers(): void {
     return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${id}/remit`, { method: "POST", token, body: data });
   });
 
-  ipcMain.handle(IPC_COLLECTION_BATCHES_RECONCILE, async (_event, id: unknown): Promise<CollectionBatchDetailResponse> => {
+  ipcMain.handle(IPC_COLLECTION_BATCHES_RECONCILE, async (_event, payload: unknown): Promise<CollectionBatchDetailResponse> => {
     const token = await getStoredToken();
     if (!token) {
       throw new Error("No valid session");
     }
-    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${id}/reconcile`, { method: "POST", token });
+    const { id, data } = payload as { id: number; data: ReconcileBatchRequest };
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${Number(id)}/reconcile`, { method: "POST", token, body: data ?? {} });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_SUBMIT, async (_event, id: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${Number(id)}/submit`, { method: "POST", token });
+  });
+
+  ipcMain.handle(IPC_COLLECTION_BATCHES_CLOSE, async (_event, payload: unknown): Promise<CollectionBatchDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: CloseBatchRequest };
+    return apiRequest<CollectionBatchDetailResponse>(`/api/v1/collection-batches/${Number(id)}/close`, { method: "POST", token, body: data });
   });
 
   // Invoices API handlers
