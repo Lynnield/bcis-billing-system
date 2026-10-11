@@ -165,21 +165,27 @@ async function seedDemoDataset(): Promise<void> {
       serviceIds.set(s.type, res.data.id);
     }
 
+    // Installation fees are left at 0 so the seeded payments below stay
+    // exact/partial/advance as described; reconnection fees are realistic.
     const planDefs = [
-      { service: "internet", name: "Internet 25 Mbps", price: "799.00" },
-      { service: "internet", name: "Internet 50 Mbps", price: "1299.00" },
-      { service: "internet", name: "Internet 100 Mbps", price: "1999.00" },
-      { service: "cable", name: "Cable Basic", price: "350.00" },
-      { service: "cable", name: "Cable Premium", price: "650.00" },
-      { service: "combo", name: "Combo Starter", price: "999.00" },
-      { service: "combo", name: "Combo Plus", price: "1599.00" },
+      { service: "internet", code: "INT-25", name: "Internet 25 Mbps", price: "799.00", speedMbps: 25, channelCount: null },
+      { service: "internet", code: "INT-50", name: "Internet 50 Mbps", price: "1299.00", speedMbps: 50, channelCount: null },
+      { service: "internet", code: "INT-100", name: "Internet 100 Mbps", price: "1999.00", speedMbps: 100, channelCount: null },
+      { service: "cable", code: "CAB-BAS", name: "Cable Basic", price: "350.00", speedMbps: null, channelCount: 60 },
+      { service: "cable", code: "CAB-PRM", name: "Cable Premium", price: "650.00", speedMbps: null, channelCount: 120 },
+      { service: "combo", code: "CMB-STR", name: "Combo Starter", price: "999.00", speedMbps: 25, channelCount: 60 },
+      { service: "combo", code: "CMB-PLS", name: "Combo Plus", price: "1599.00", speedMbps: 50, channelCount: 120 },
     ] as const;
     const plans: Array<{ id: number; price: string }> = [];
     for (const p of planDefs) {
       const serviceId = serviceIds.get(p.service)!;
       const res = await call<{ data: { id: number; price: string } }>(app, admin, "POST", `/api/v1/services/${serviceId}/plans`, {
+        code: p.code,
         name: p.name,
         price: p.price,
+        reconnectionFee: "200.00",
+        speedMbps: p.speedMbps,
+        channelCount: p.channelCount,
       });
       plans.push({ id: res.data.id, price: res.data.price });
     }
@@ -328,14 +334,31 @@ async function seedDemoDataset(): Promise<void> {
     }
 
     // 10 partial cash payments (half the invoice amount).
+    const partialPaymentIds: number[] = [];
     for (let i = 32; i < 42; i++) {
       const accountId = accountIds[i]!;
       const planIdx = i < SUBSCRIBER_COUNT ? i : i - SUBSCRIBER_COUNT + 3;
       const totalCents = parseMoneyToCents(plans[planIdx % plans.length]!.price)!;
       const half = formatCents(totalCents / 2n);
-      await call(app, cashier, "POST", "/api/v1/payments", {
+      const res = await call<{ data: { id: number } }>(app, cashier, "POST", "/api/v1/payments", {
         serviceAccountId: accountId,
         amount: half,
+        method: "cash",
+        receiptNumber: `DEMO-RCT-${pad4(receiptCounter++)}`,
+      });
+      partialPaymentIds.push(res.data.id);
+    }
+
+    // 3 advance payments (AT-03): three months paid at once. One month
+    // settles the current invoice; the rest is held as unapplied credit and
+    // used by the next billing runs.
+    for (let i = 47; i < 50; i++) {
+      const accountId = accountIds[i]!;
+      const planIdx = i < SUBSCRIBER_COUNT ? i : i - SUBSCRIBER_COUNT + 3;
+      const threeMonths = formatCents(parseMoneyToCents(plans[planIdx % plans.length]!.price)! * 3n);
+      await call(app, cashier, "POST", "/api/v1/payments", {
+        serviceAccountId: accountId,
+        amount: threeMonths,
         method: "cash",
         receiptNumber: `DEMO-RCT-${pad4(receiptCounter++)}`,
       });
@@ -361,7 +384,40 @@ async function seedDemoDataset(): Promise<void> {
     await call(app, admin, "POST", `/api/v1/payments/${gcashPaymentIds[3]}/reject`, { reason: "Demo: reference number could not be matched" });
     // gcashPaymentIds[4] intentionally left pending.
 
-    console.log(`  Posted ${cashExactPaymentIds.length + 10 + gcashPaymentIds.length} payments (cash exact/partial + GCash verify/reject/pending).`);
+    console.log(`  Posted ${cashExactPaymentIds.length + partialPaymentIds.length + 3 + gcashPaymentIds.length} payments (cash exact/partial/advance + GCash verify/reject/pending).`);
+
+    // --- Collection batches (spec 3.8 demo) ---------------------------------
+    // One fully reconciled and closed batch with a recorded shortage, and one
+    // still in the field, so the reconciliation screen has real data.
+    const [firstCollectorId, secondCollectorId] = collectorIds as [number, number];
+    const closedBatch = await call<{ data: { id: number } }>(app, admin, "POST", "/api/v1/collection-batches", {
+      collectorId: firstCollectorId,
+      batchDate: "2026-10-05",
+    });
+    let expectedCents = 0n;
+    for (const paymentId of partialPaymentIds.slice(0, 4)) {
+      await call(app, admin, "POST", `/api/v1/collection-batches/${closedBatch.data.id}/payments`, { paymentId });
+    }
+    const closedDetail = await call<{ data: { summary: { expectedCash: string } } }>(app, admin, "GET", `/api/v1/collection-batches/${closedBatch.data.id}`);
+    expectedCents = parseMoneyToCents(closedDetail.data.summary.expectedCash)!;
+    await call(app, admin, "POST", `/api/v1/collection-batches/${closedBatch.data.id}/submit`);
+    await call(app, admin, "POST", `/api/v1/collection-batches/${closedBatch.data.id}/remit`, {
+      remittedAmount: formatCents(expectedCents - 10000n),
+    });
+    await call(app, admin, "POST", `/api/v1/collection-batches/${closedBatch.data.id}/reconcile`, {
+      acknowledgeDifference: true,
+      notes: "Demo: collector short by 100.00, to be deducted from next payout",
+    });
+    await call(app, admin, "POST", `/api/v1/collection-batches/${closedBatch.data.id}/close`, { confirm: true });
+
+    const openBatch = await call<{ data: { id: number } }>(app, admin, "POST", "/api/v1/collection-batches", {
+      collectorId: secondCollectorId,
+      batchDate: "2026-10-10",
+    });
+    for (const paymentId of partialPaymentIds.slice(4, 7)) {
+      await call(app, admin, "POST", `/api/v1/collection-batches/${openBatch.data.id}/payments`, { paymentId });
+    }
+    console.log("  Created 2 collection batches (one closed with a 100.00 shortage, one in progress).");
 
     // --- Reversal example ----------------------------------------------------
     await call(app, admin, "POST", `/api/v1/payments/${cashExactPaymentIds[0]}/reverse`, {
@@ -377,11 +433,25 @@ async function seedDemoDataset(): Promise<void> {
       reason: "Non-payment for over 90 days",
       notes: "Demo: suspended for delinquency",
     });
-    await call(app, admin, "PATCH", `/api/v1/service-accounts/${suspendThenReconnectAccountId}/reconnect`, {
+    // Spec 3.10 workflow: qualifying payment -> reconnection request with a
+    // technician -> technician marks it completed. The fee is charged on the
+    // next invoice for the account.
+    const balance = await call<{ data: { outstandingBalance: string } }>(app, admin, "GET", `/api/v1/receivables/service-accounts/${suspendThenReconnectAccountId}`);
+    if (balance.data.outstandingBalance !== "0.00") {
+      await call(app, admin, "POST", "/api/v1/payments", {
+        serviceAccountId: suspendThenReconnectAccountId,
+        amount: balance.data.outstandingBalance,
+        method: "cash",
+      });
+    }
+    const request = await call<{ reconnection: { id: number } }>(app, admin, "PATCH", `/api/v1/service-accounts/${suspendThenReconnectAccountId}/reconnect`, {
       reason: "Customer settled outstanding balance",
       fee: "150.00",
       technicianUserId,
-      notes: "Demo: reconnected after payment and field verification",
+      notes: "Demo: reconnection requested after payment",
+    });
+    await call(app, admin, "POST", `/api/v1/service-accounts/${suspendThenReconnectAccountId}/reconnections/${request.reconnection.id}/complete`, {
+      notes: "Demo: line restored and verified on site",
     });
 
     await call(app, admin, "PATCH", `/api/v1/service-accounts/${suspendOnlyAccountId}/suspend`, {

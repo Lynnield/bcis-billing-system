@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Modal } from "@/components/ui/Modal";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useToast } from "@/lib/toast";
+import { useAuth } from "@/lib/auth-context";
 import {
   getServiceAccountById,
   suspendServiceAccount,
@@ -65,8 +66,41 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
   const [suspendReason, setSuspendReason] = React.useState("");
   const [suspendNotes, setSuspendNotes] = React.useState("");
   const [reconnectOpen, setReconnectOpen] = React.useState(false);
-  const [reconnectFee, setReconnectFee] = React.useState("0.00");
+  // Blank fee = the plan's reconnection fee (decided server-side).
+  const [reconnectFee, setReconnectFee] = React.useState("");
   const [reconnectNotes, setReconnectNotes] = React.useState("");
+  const [reconnectReason, setReconnectReason] = React.useState("");
+  const [technicianId, setTechnicianId] = React.useState("");
+  const [completeNow, setCompleteNow] = React.useState(false);
+  const [overrideUnpaid, setOverrideUnpaid] = React.useState(false);
+  const { user } = useAuth();
+  const canOverride = !!user && user.roles.some((r) => r === "Owner / Super Admin" || r === "Administrator");
+
+  // Technician picker: the user list is Owner/Admin-only on the API, so other
+  // roles simply get no picker (the request can still be raised).
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => window.bcis.users.getList(),
+    enabled: reconnectOpen && canOverride,
+  });
+  const technicians = (usersData?.users ?? []).filter((u) => u.status === "active" && u.roles.includes("Technician"));
+
+  const { data: historyData } = useQuery({
+    queryKey: ["service-history", accountId],
+    queryFn: () => window.bcis.serviceAccounts.getHistory(accountId),
+  });
+  const serviceHistory = historyData?.data ?? [];
+
+  const completeMutation = useMutation({
+    mutationFn: (reconnectionId: number) => window.bcis.serviceAccounts.completeReconnection(accountId, reconnectionId),
+    onSuccess: () => {
+      showSuccess("Reconnection completed", "The account is active again.");
+      queryClient.invalidateQueries({ queryKey: ["service-account", accountId] });
+      queryClient.invalidateQueries({ queryKey: ["reconnection-history", accountId] });
+      queryClient.invalidateQueries({ queryKey: ["service-history", accountId] });
+    },
+    onError: (err: unknown) => showError("Could not complete reconnection", err instanceof Error ? err.message : ""),
+  });
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["service-account", accountId] });
@@ -87,12 +121,25 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
   });
 
   const reconnectMutation = useMutation({
-    mutationFn: () => reconnectServiceAccount(accountId, { fee: reconnectFee.trim() || "0.00", notes: reconnectNotes.trim() || undefined }),
+    mutationFn: () =>
+      reconnectServiceAccount(accountId, {
+        ...(reconnectFee.trim() ? { fee: reconnectFee.trim() } : {}),
+        ...(reconnectNotes.trim() ? { notes: reconnectNotes.trim() } : {}),
+        ...(reconnectReason.trim() ? { reason: reconnectReason.trim() } : {}),
+        ...(technicianId ? { technicianUserId: Number(technicianId) } : {}),
+        completeNow,
+        ...(overrideUnpaid ? { overrideUnpaid: true } : {}),
+      }),
     onSuccess: (data) => {
-      showSuccess("Service account reconnected", data.message);
+      showSuccess(completeNow ? "Service account reconnected" : "Reconnection requested", data.message);
       setReconnectOpen(false);
-      setReconnectFee("0.00");
+      setReconnectFee("");
       setReconnectNotes("");
+      setReconnectReason("");
+      setTechnicianId("");
+      setCompleteNow(false);
+      setOverrideUnpaid(false);
+      queryClient.invalidateQueries({ queryKey: ["service-history", accountId] });
       invalidateAll();
     },
     onError: (err: unknown) => showError("Failed to reconnect", err instanceof Error ? err.message : "Unknown error"),
@@ -185,6 +232,27 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
                 <p className="font-medium">{new Date(account.activatedAt).toLocaleString()}</p>
               </div>
             )}
+            <div>
+              <p className="text-sm text-muted-foreground">Installation Address</p>
+              <p className="font-medium">{account.installationAddress ?? "Same as subscriber address"}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Billing Starts</p>
+                <p className="font-medium">{account.billingStartDate ? account.billingStartDate.slice(0, 10) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Due Day</p>
+                <p className="font-medium">{account.billingDueDay ?? "Period default"}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Current Rate</p>
+              <p className="font-medium tabular-nums">
+                ₱{account.currentRate ?? account.plan.price}
+                {account.currentRate ? <span className="ml-1 text-xs text-muted-foreground">(account rate)</span> : <span className="ml-1 text-xs text-muted-foreground">(plan price)</span>}
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -222,8 +290,29 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-muted-foreground">Plan Name</p>
-              <p className="font-medium">{account.plan.name}</p>
+              <p className="text-sm text-muted-foreground">Plan</p>
+              <p className="font-medium">
+                {account.plan.code && <span className="mr-2 font-mono text-xs text-muted-foreground">{account.plan.code}</span>}
+                {account.plan.name}
+              </p>
+            </div>
+            {(account.plan.speedMbps || account.plan.channelCount) && (
+              <div>
+                <p className="text-sm text-muted-foreground">Includes</p>
+                <p className="font-medium">
+                  {[account.plan.speedMbps ? `${account.plan.speedMbps} Mbps` : null, account.plan.channelCount ? `${account.plan.channelCount} channels` : null].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Installation Fee</p>
+                <p className="font-medium tabular-nums">₱{account.plan.installationFee}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Reconnection Fee</p>
+                <p className="font-medium tabular-nums">₱{account.plan.reconnectionFee}</p>
+              </div>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Service</p>
@@ -368,15 +457,17 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
               <TableHeader>
                 <TableRow>
                   <TableHead>Request Date</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Completion Date</TableHead>
-                  <TableHead>Fee</TableHead>
+                  <TableHead className="text-right">Fee</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {reconnectionHistory.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground text-sm">
+                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground text-sm">
                       No reconnections recorded
                     </TableCell>
                   </TableRow>
@@ -384,15 +475,66 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
                   reconnectionHistory.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{new Date(r.requestDate).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Badge variant={r.status === "completed" ? "success" : "warning"}>{r.status === "completed" ? "Completed" : "Requested"}</Badge>
+                      </TableCell>
                       <TableCell>{r.completionDate ? new Date(r.completionDate).toLocaleString() : "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">₱{r.fee}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{r.notes ?? "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        ₱{r.fee}
+                        {r.billedInvoiceId ? <span className="block text-xs text-muted-foreground">billed</span> : null}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-pre-line">{r.notes ?? "—"}</TableCell>
+                      <TableCell>
+                        {r.status === "requested" && (
+                          <Button size="sm" onClick={() => completeMutation.mutate(r.id)} disabled={completeMutation.isPending}>
+                            Mark Completed
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <History className="h-5 w-5 text-muted-foreground" />
+            Service History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {serviceHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No recorded changes yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {serviceHistory.map((h) => {
+                const m = (h.metadata ?? {}) as Record<string, unknown>;
+                const detail =
+                  m.previousStatus || m.newStatus
+                    ? `${String(m.previousStatus ?? "—")} → ${String(m.newStatus ?? "—")}`
+                    : m.new
+                      ? Object.keys(m.new as object).join(", ")
+                      : "";
+                return (
+                  <li key={h.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                    <span>
+                      <span className="font-mono text-xs">{h.action.replace("service_account.", "")}</span>
+                      {detail && <span className="ml-2 text-muted-foreground">{detail}</span>}
+                      {typeof m.reason === "string" && m.reason && <span className="ml-2 text-muted-foreground">— {m.reason}</span>}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {h.actorName ?? "—"} · {new Date(h.at).toLocaleString()}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
@@ -433,14 +575,14 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
         open={reconnectOpen}
         onClose={() => !reconnectMutation.isPending && setReconnectOpen(false)}
         title="Reconnect Service Account"
-        description="Records a completed reconnection with the fee collected, if any."
+        description="Requires the overdue balance to be paid. Raises a reconnection request for a technician; the account becomes active when it is marked completed."
         footer={
           <>
             <Button variant="outline" onClick={() => setReconnectOpen(false)} disabled={reconnectMutation.isPending}>
               Cancel
             </Button>
-            <Button onClick={() => reconnectMutation.mutate()} disabled={reconnectMutation.isPending}>
-              {reconnectMutation.isPending ? "Reconnecting..." : "Confirm Reconnection"}
+            <Button onClick={() => reconnectMutation.mutate()} disabled={reconnectMutation.isPending || (overrideUnpaid && !reconnectReason.trim())}>
+              {reconnectMutation.isPending ? "Saving..." : completeNow ? "Reconnect Now" : "Request Reconnection"}
             </Button>
           </>
         }
@@ -451,7 +593,44 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
             inputMode="decimal"
             value={reconnectFee}
             onChange={(e) => setReconnectFee(e.target.value)}
-            placeholder="0.00"
+            placeholder={`${account.plan.reconnectionFee} (plan fee)`}
+            helperText="Charged on the account's next invoice. Leave blank to use the plan's fee."
+          />
+          {technicians.length > 0 && (
+            <div className="space-y-1.5">
+              <label htmlFor="reconnect-technician" className="text-sm font-medium leading-none">
+                Technician
+              </label>
+              <select
+                id="reconnect-technician"
+                value={technicianId}
+                onChange={(e) => setTechnicianId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Not assigned yet</option>
+                {technicians.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={completeNow} onChange={(e) => setCompleteNow(e.target.checked)} />
+            Reconnected now (no field visit needed)
+          </label>
+          {canOverride && (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={overrideUnpaid} onChange={(e) => setOverrideUnpaid(e.target.checked)} />
+              Reconnect even though an overdue balance remains (reason required, audited)
+            </label>
+          )}
+          <Input
+            label={overrideUnpaid ? "Reason *" : "Reason"}
+            value={reconnectReason}
+            onChange={(e) => setReconnectReason(e.target.value)}
+            placeholder="e.g. Paid in full at the office"
           />
           <Textarea
             label="Notes"

@@ -272,7 +272,19 @@ describe("receivables", () => {
     const againSuspended = await app.inject({ method: "PATCH", url: `/api/v1/service-accounts/${accountId}/suspend`, headers: auth(tokens.ar_super!), payload: {} });
     expect(againSuspended.statusCode).toBe(409);
 
-    const reconnect = await app.inject({ method: "PATCH", url: `/api/v1/service-accounts/${accountId}/reconnect`, headers: auth(tokens.ar_super!), payload: { reason: "Paid in full" } });
+    // This fixture account still has overdue invoices, so reconnection is
+    // refused until paid (spec 3.10 "after qualifying payment")...
+    const refused = await app.inject({ method: "PATCH", url: `/api/v1/service-accounts/${accountId}/reconnect`, headers: auth(tokens.ar_super!), payload: { reason: "Paid in full" } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().overdueBalance).toBeDefined();
+
+    // ...unless the Owner explicitly overrides it with a reason.
+    const reconnect = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/service-accounts/${accountId}/reconnect`,
+      headers: auth(tokens.ar_owner!),
+      payload: { reason: "Owner approved: payment arrangement signed", overrideUnpaid: true, completeNow: true },
+    });
     expect(reconnect.statusCode).toBe(200);
     expect(reconnect.json().data.status).toBe("active");
 

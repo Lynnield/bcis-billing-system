@@ -41,6 +41,8 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  ReconnectionRecord,
+  ServiceHistoryEntry,
   ReportCatalogEntry,
   ReportRunParams,
   ReportRunResult,
@@ -163,8 +165,11 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("service-accounts:update-collection-assignment", { id, data }),
     suspend: (id: number, data: SuspendServiceAccountRequest): Promise<ServiceAccountDetailResponse & { message?: string }> =>
       ipcRenderer.invoke("service-accounts:suspend", { id, data }),
-    reconnect: (id: number, data: ReconnectServiceAccountRequest): Promise<ServiceAccountDetailResponse & { message?: string }> =>
+    reconnect: (id: number, data: ReconnectServiceAccountRequest): Promise<ServiceAccountDetailResponse & { message?: string; reconnection?: ReconnectionRecord }> =>
       ipcRenderer.invoke("service-accounts:reconnect", { id, data }),
+    completeReconnection: (id: number, reconnectionId: number, notes?: string): Promise<ServiceAccountDetailResponse> =>
+      ipcRenderer.invoke("service-accounts:complete-reconnection", { id, reconnectionId, notes }),
+    getHistory: (id: number): Promise<{ data: ServiceHistoryEntry[] }> => ipcRenderer.invoke("service-accounts:get-history", id),
     getSuspensionHistory: (id: number): Promise<SuspensionHistoryResponse> => ipcRenderer.invoke("service-accounts:get-suspension-history", id),
     getReconnectionHistory: (id: number): Promise<ReconnectionHistoryResponse> => ipcRenderer.invoke("service-accounts:get-reconnection-history", id),
   },

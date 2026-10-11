@@ -144,6 +144,7 @@ export const subscribers = pgTable("subscribers", {
   city: varchar("city", { length: 100 }),
   province: varchar("province", { length: 100 }),
   postalCode: varchar("postal_code", { length: 20 }),
+  notes: text("notes"),
   status: subscriberStatusEnum("status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
@@ -151,6 +152,7 @@ export const subscribers = pgTable("subscribers", {
   uniqueIndex("subscribers_account_number_unique").on(t.accountNumber),
   index("subscribers_status_idx").on(t.status),
   index("subscribers_name_idx").on(t.lastName, t.firstName),
+  index("subscribers_contact_number_idx").on(t.contactNumber),
 ]);
 
 export const subscriberStatusHistory = pgTable("subscriber_status_history", {
@@ -180,9 +182,17 @@ export const services = pgTable("services", {
 export const servicePlans = pgTable("service_plans", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   serviceId: bigint("service_id", { mode: "number" }).notNull().references(() => services.id, { onDelete: "restrict" }),
+  // Short plan code (e.g. "INT-50"); nullable only for plans created before it existed.
+  code: varchar("code", { length: 30 }),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
   price: numeric("price", { precision: 14, scale: 2 }).notNull(),
+  installationFee: numeric("installation_fee", { precision: 14, scale: 2 }).notNull().default("0"),
+  reconnectionFee: numeric("reconnection_fee", { precision: 14, scale: 2 }).notNull().default("0"),
+  // Internet / Combo plans
+  speedMbps: integer("speed_mbps"),
+  // Cable / Combo plans
+  channelCount: integer("channel_count"),
   status: recordStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
@@ -190,6 +200,8 @@ export const servicePlans = pgTable("service_plans", {
   unique("service_plans_service_name_unique").on(t.serviceId, t.name),
   index("service_plans_service_id_idx").on(t.serviceId),
   check("service_plans_price_non_negative", sql`${t.price} >= 0`),
+  uniqueIndex("service_plans_code_unique").on(t.code),
+  check("service_plans_fees_non_negative", sql`${t.installationFee} >= 0 AND ${t.reconnectionFee} >= 0`),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -221,9 +233,17 @@ export const collectors = pgTable("collectors", {
 
 export const serviceAccounts = pgTable("service_accounts", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
-  subscriberId: bigint("subscriber_id", { mode: "number" }).notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  subscriberId: bigint("subscriber_id", { mode: "number" }).notNull().references(() => subscribers.id, { onDelete: "restrict" }),
   planId: bigint("plan_id", { mode: "number" }).notNull().references(() => servicePlans.id, { onDelete: "restrict" }),
   serviceNumber: varchar("service_number", { length: 50 }).notNull(),
+  // Where the service is installed; one subscriber may have several.
+  installationAddress: varchar("installation_address", { length: 255 }),
+  // No invoice is generated for a period that ends before this date.
+  billingStartDate: date("billing_start_date", { mode: "date" }),
+  // Day of the month the bill falls due (1-28); null = the period's due date.
+  billingDueDay: integer("billing_due_day"),
+  // Account-specific monthly rate; null = the plan's current price.
+  currentRate: numeric("current_rate", { precision: 14, scale: 2 }),
   status: serviceAccountStatusEnum("status").notNull().default("pending_installation"),
   collectionAreaId: bigint("collection_area_id", { mode: "number" }).references(() => collectionAreas.id, { onDelete: "set null" }),
   assignedCollectorId: bigint("assigned_collector_id", { mode: "number" }).references(() => collectors.id, { onDelete: "set null" }),
@@ -234,6 +254,10 @@ export const serviceAccounts = pgTable("service_accounts", {
   uniqueIndex("service_accounts_service_number_unique").on(t.serviceNumber),
   index("service_accounts_subscriber_id_idx").on(t.subscriberId),
   index("service_accounts_status_idx").on(t.status),
+  index("service_accounts_collector_idx").on(t.assignedCollectorId),
+  index("service_accounts_area_idx").on(t.collectionAreaId),
+  check("service_accounts_due_day_range", sql`${t.billingDueDay} is null or ${t.billingDueDay} between 1 and 28`),
+  check("service_accounts_rate_non_negative", sql`${t.currentRate} is null or ${t.currentRate} >= 0`),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -338,6 +362,7 @@ export const payments = pgTable("payments", {
   index("payments_service_account_id_idx").on(t.serviceAccountId),
   index("payments_status_idx").on(t.status),
   index("payments_payment_date_idx").on(t.paymentDate),
+  index("payments_reference_number_idx").on(t.referenceNumber),
   uniqueIndex("payments_receipt_number_unique").on(t.receiptNumber),
   check("payments_amount_positive", sql`${t.amount} > 0`),
 ]);
@@ -502,6 +527,9 @@ export const reconnectionRecords = pgTable("reconnection_records", {
   status: reconnectionStatusEnum("status").notNull().default("completed"),
   notes: text("notes"),
   requestedByUserId: bigint("requested_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  completedByUserId: bigint("completed_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  // The invoice the fee was charged on; null until the next billing run.
+  billedInvoiceId: bigint("billed_invoice_id", { mode: "number" }).references(() => invoices.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (t) => [
   index("reconnection_records_service_account_id_idx").on(t.serviceAccountId),

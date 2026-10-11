@@ -188,7 +188,7 @@ describe("suspension and reconnection (3.10)", () => {
       method: "PATCH",
       url: `/api/v1/service-accounts/${id}/reconnect`,
       headers: auth(tokens.sa_admin!),
-      payload: { fee: "150.00", notes: "Paid reconnection fee at office" },
+      payload: { fee: "150.00", notes: "Paid reconnection fee at office", completeNow: true },
     });
     expect(reconnect.statusCode).toBe(200);
     expect(reconnect.json().data.status).toBe("active");

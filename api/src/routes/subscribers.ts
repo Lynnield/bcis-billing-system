@@ -33,6 +33,7 @@ const createSchema = z.object({
   city: z.string().trim().max(100).optional(),
   province: z.string().trim().max(100).optional(),
   postalCode: z.string().trim().max(20).optional(),
+  notes: z.string().trim().max(4000).optional(),
   status: z.enum(statusValues).optional(),
 });
 
@@ -47,6 +48,7 @@ const updateSchema = z
     city: z.string().trim().max(100).nullable().optional(),
     province: z.string().trim().max(100).nullable().optional(),
     postalCode: z.string().trim().max(20).nullable().optional(),
+    notes: z.string().trim().max(4000).nullable().optional(),
   })
   .strict();
 
@@ -90,6 +92,7 @@ const subscriberColumns = {
   city: subscribers.city,
   province: subscribers.province,
   postalCode: subscribers.postalCode,
+  notes: subscribers.notes,
   status: subscribers.status,
   createdAt: subscribers.createdAt,
   updatedAt: subscribers.updatedAt,

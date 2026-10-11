@@ -179,8 +179,11 @@ export function PlanList({ service, onBack }: PlanListProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Code</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Price (PHP)</TableHead>
+              <TableHead>Includes</TableHead>
+              <TableHead className="text-right">Monthly (₱)</TableHead>
+              <TableHead className="text-right">Install / Reconnect (₱)</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[120px]">Actions</TableHead>
             </TableRow>
@@ -188,15 +191,20 @@ export function PlanList({ service, onBack }: PlanListProps) {
           <TableBody>
             {plans.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No plans found
                 </TableCell>
               </TableRow>
             ) : (
               plans.map((plan) => (
                 <TableRow key={plan.id}>
+                  <TableCell className="font-mono text-sm">{plan.code ?? "—"}</TableCell>
                   <TableCell className="font-medium">{plan.name}</TableCell>
-                  <TableCell className="font-medium">₱{plan.price}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {[plan.speedMbps ? `${plan.speedMbps} Mbps` : null, plan.channelCount ? `${plan.channelCount} ch` : null].filter(Boolean).join(" · ") || "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{plan.price}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{plan.installationFee} / {plan.reconnectionFee}</TableCell>
                   <TableCell>
                     <Badge variant={statusBadgeVariant[plan.status]}>
                       {plan.status}
@@ -227,6 +235,7 @@ export function PlanList({ service, onBack }: PlanListProps) {
         }}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["plans", service.id] })}
         serviceId={service.id}
+        serviceType={service.type}
         initialData={editingPlan}
         isEditing={!!editingPlan}
       />

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, desc, eq, ilike, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   auditLogs,
@@ -8,6 +8,7 @@ import {
   invoices,
   invoiceAdjustments,
   invoiceLineItems,
+  reconnectionRecords,
   serviceAccounts,
   servicePlans,
   services,
@@ -368,7 +369,14 @@ export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
  */
 export async function createInvoiceTx(tx: Tx, input: CreateInvoiceInput, actorUserId: number): Promise<number> {
   const [serviceAccount] = await tx
-    .select({ id: serviceAccounts.id, status: serviceAccounts.status, planId: serviceAccounts.planId })
+    .select({
+      id: serviceAccounts.id,
+      status: serviceAccounts.status,
+      planId: serviceAccounts.planId,
+      currentRate: serviceAccounts.currentRate,
+      billingDueDay: serviceAccounts.billingDueDay,
+      billingStartDate: serviceAccounts.billingStartDate,
+    })
     .from(serviceAccounts)
     .where(eq(serviceAccounts.id, input.serviceAccountId))
     .limit(1);
@@ -382,16 +390,54 @@ export async function createInvoiceTx(tx: Tx, input: CreateInvoiceInput, actorUs
   if (!plan) throw new InvoiceInputError("Service plan no longer exists");
   if (plan.status !== "active") throw new InvoiceInputError("Service plan is not active");
 
-  const basePriceCents = parseMoneyToCents(plan.price);
-  if (basePriceCents === null) throw new Error("Plan price is not a valid amount");
+  if (serviceAccount.billingStartDate && serviceAccount.billingStartDate > period.periodEnd) {
+    throw new InvoiceInputError(`Billing for this account starts on ${serviceAccount.billingStartDate.toISOString().slice(0, 10)}`);
+  }
+
+  // An account-specific rate overrides the plan's current price.
+  const rate = serviceAccount.currentRate ?? plan.price;
+  const basePriceCents = parseMoneyToCents(rate);
+  if (basePriceCents === null) throw new Error("Rate is not a valid amount");
 
   const quantity = input.quantity ?? 1;
 
-  // The plan price is copied onto the line item, so later plan price
-  // changes never alter an issued invoice.
+  // The rate is copied onto the line item, so later plan price or rate
+  // changes never alter an issued invoice (spec 3.3).
   const lineInputs: Array<{ description: string; quantity: number; unitPriceCents: bigint }> = [
-    { description: plan.name, quantity, unitPriceCents: basePriceCents },
+    { description: serviceAccount.currentRate ? `${plan.name} (account rate)` : plan.name, quantity, unitPriceCents: basePriceCents },
   ];
+
+  // One-time installation fee on the account's first invoice.
+  const installationFeeCents = parseMoneyToCents(plan.installationFee) ?? 0n;
+  if (installationFeeCents > 0n) {
+    const [prior] = await tx
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(and(eq(invoices.serviceAccountId, serviceAccount.id), ne(invoices.status, "void")))
+      .limit(1);
+    if (!prior) lineInputs.push({ description: "Installation fee", quantity: 1, unitPriceCents: installationFeeCents });
+  }
+
+  // Reconnection fees from completed reconnections not yet billed (3.10).
+  const unbilledReconnections = await tx
+    .select({ id: reconnectionRecords.id, fee: reconnectionRecords.fee, completionDate: reconnectionRecords.completionDate })
+    .from(reconnectionRecords)
+    .where(
+      and(
+        eq(reconnectionRecords.serviceAccountId, serviceAccount.id),
+        eq(reconnectionRecords.status, "completed"),
+        isNull(reconnectionRecords.billedInvoiceId),
+        gt(reconnectionRecords.fee, "0"),
+      ),
+    )
+    .for("update");
+  for (const r of unbilledReconnections) {
+    lineInputs.push({
+      description: `Reconnection fee${r.completionDate ? ` (${r.completionDate.toISOString().slice(0, 10)})` : ""}`,
+      quantity: 1,
+      unitPriceCents: parseMoneyToCents(r.fee) ?? 0n,
+    });
+  }
   for (const extra of input.additionalLineItems ?? []) {
     const extraCents = parseMoneyToCents(extra.unitPrice);
     if (extraCents === null) throw new InvoiceInputError("Invalid line item unit price");
@@ -409,7 +455,7 @@ export async function createInvoiceTx(tx: Tx, input: CreateInvoiceInput, actorUs
   if (totalCents < 0n) throw new InvoiceInputError("Invoice total cannot be negative");
 
   const issueDate = input.issueDate ?? todayDate();
-  const dueDate = input.dueDate ?? period.dueDate.toISOString().slice(0, 10);
+  const dueDate = input.dueDate ?? accountDueDate(period.dueDate, serviceAccount.billingDueDay);
 
   // Atomic re-check of the duplicate guard inside the transaction; the
   // unique constraint is the backstop for the concurrent case.
@@ -452,6 +498,13 @@ export async function createInvoiceTx(tx: Tx, input: CreateInvoiceInput, actorUs
     });
   }
 
+  if (unbilledReconnections.length > 0) {
+    await tx
+      .update(reconnectionRecords)
+      .set({ billedInvoiceId: invoice!.id })
+      .where(inArray(reconnectionRecords.id, unbilledReconnections.map((r) => r.id)));
+  }
+
   for (const adj of input.adjustments ?? []) {
     await tx.insert(invoiceAdjustments).values({
       invoiceId: invoice!.id,
@@ -471,6 +524,13 @@ export async function createInvoiceTx(tx: Tx, input: CreateInvoiceInput, actorUs
   });
 
   return invoice!.id;
+}
+
+/** The period's due date, moved to the account's own due day in the same month. */
+function accountDueDate(periodDue: Date, dueDay: number | null): string {
+  const iso = periodDue.toISOString().slice(0, 10);
+  if (!dueDay) return iso;
+  return `${iso.slice(0, 8)}${String(dueDay).padStart(2, "0")}`;
 }
 
 export class BillingConflictError extends Error {}

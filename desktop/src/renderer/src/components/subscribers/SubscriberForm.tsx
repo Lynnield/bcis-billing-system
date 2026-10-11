@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/lib/toast";
 import { CreateSubscriberRequest, UpdateSubscriberRequest, Subscriber, SubscriberStatus } from "@/shared/types";
@@ -36,6 +37,7 @@ interface SubscriberFormData {
   city?: string;
   province?: string;
   postalCode?: string;
+  notes?: string;
   status: SubscriberStatus;
 }
 
@@ -62,6 +64,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
           city: initialData.city ?? "",
           province: initialData.province ?? "",
           postalCode: initialData.postalCode ?? "",
+          notes: initialData.notes ?? "",
           status: initialData.status,
         }
       : {
@@ -75,6 +78,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
           city: "",
           province: "",
           postalCode: "",
+          notes: "",
           status: "pending",
         },
   });
@@ -98,6 +102,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
           city: data.city?.trim() || undefined,
           province: data.province?.trim() || undefined,
           postalCode: data.postalCode?.trim() || undefined,
+          notes: data.notes?.trim() || undefined,
         };
         await window.bcis.subscribers.create(payload);
       } else if (initialData) {
@@ -118,6 +123,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
           city: data.city?.trim() || null,
           province: data.province?.trim() || null,
           postalCode: data.postalCode?.trim() || null,
+          notes: data.notes?.trim() || null,
         };
         await window.bcis.subscribers.update(initialData.id, payload);
       }
@@ -147,6 +153,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
             city: initialData.city ?? "",
             province: initialData.province ?? "",
             postalCode: initialData.postalCode ?? "",
+            notes: initialData.notes ?? "",
             status: initialData.status,
           }
         : {
@@ -160,6 +167,7 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
             city: "",
             province: "",
             postalCode: "",
+            notes: "",
             status: "pending",
           });
     }
@@ -265,6 +273,13 @@ export function SubscriberForm({ open, onClose, onSuccess, initialData, isEditin
             placeholder="1000"
           />
         </div>
+        <Textarea
+          label="Notes"
+          {...register("notes", { maxLength: 4000 })}
+          error={errors.notes?.message}
+          placeholder="e.g. Landmark, preferred contact time, special instructions"
+          rows={3}
+        />
       </form>
     </Modal>
   );

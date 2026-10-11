@@ -20,7 +20,7 @@ import {
   BookOpen,
   Receipt,
 } from "lucide-react";
-import { getServiceAccounts } from "@/lib/service-account-api";
+import { getServiceAccounts, getServiceAccountById } from "@/lib/service-account-api";
 import { ServiceAccountListItem, ServiceAccountDetail, ServiceAccountStatus } from "@/shared/types";
 
 const statusBadgeVariant: Record<ServiceAccountStatus, "default" | "success" | "warning" | "destructive" | "secondary"> = {
@@ -45,15 +45,7 @@ export function ServiceAccountList() {
   const [collectorFilter, setCollectorFilter] = React.useState<number | "all">("all");
 
   const [formModalOpen, setFormModalOpen] = React.useState(false);
-  const [editingAccount, setEditingAccount] = React.useState<{
-    id: number;
-    subscriberId: number;
-    planId: number;
-    serviceNumber: string;
-    status: ServiceAccountStatus;
-    collectionAreaId?: number;
-    assignedCollectorId?: number;
-  } | undefined>(undefined);
+  const [editingAccount, setEditingAccount] = React.useState<React.ComponentProps<typeof ServiceAccountForm>["initialData"]>(undefined);
   const [ledgerAccountId, setLedgerAccountId] = React.useState<number | null>(null);
   const [soaAccountId, setSoaAccountId] = React.useState<number | null>(null);
   const [viewingAccountId, setViewingAccountId] = React.useState<number | null>(null);
@@ -79,15 +71,22 @@ export function ServiceAccountList() {
     setFormModalOpen(true);
   };
 
-  const handleEdit = (account: ServiceAccountDetail) => {
+  // Load the full record so every editable field (rate, due day, ...) is
+  // pre-filled; saving a partial row would blank the fields it lacks.
+  const handleEdit = async (row: ServiceAccountDetail) => {
+    const account = (await getServiceAccountById(row.id)).data;
     setEditingAccount({
       id: account.id,
       subscriberId: account.subscriber.id,
       planId: account.plan.id,
       serviceNumber: account.serviceNumber,
       status: account.status,
-      collectionAreaId: account.collectionArea?.id,
-      assignedCollectorId: account.collector?.id,
+      collectionAreaId: account.collectionArea?.id ?? null,
+      assignedCollectorId: account.collector?.id ?? null,
+      installationAddress: account.installationAddress,
+      billingStartDate: account.billingStartDate,
+      billingDueDay: account.billingDueDay,
+      currentRate: account.currentRate,
     });
     setFormModalOpen(true);
   };
@@ -339,10 +338,6 @@ export function ServiceAccountList() {
         }}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["service-accounts"] })}
         initialData={editingAccount}
-        subscribers={[]}
-        plans={[]}
-        collectionAreas={[]}
-        collectors={[]}
         isEditing={!!editingAccount}
       />
     </div>

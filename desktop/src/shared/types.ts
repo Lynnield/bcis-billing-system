@@ -138,6 +138,7 @@ export interface Subscriber {
   city: string | null;
   province: string | null;
   postalCode: string | null;
+  notes: string | null;
   status: SubscriberStatus;
   createdAt: string;
   updatedAt: string;
@@ -168,6 +169,7 @@ export interface CreateSubscriberRequest {
   city?: string;
   province?: string;
   postalCode?: string;
+  notes?: string;
   status?: SubscriberStatus;
 }
 
@@ -181,6 +183,7 @@ export interface UpdateSubscriberRequest {
   city?: string | null;
   province?: string | null;
   postalCode?: string | null;
+  notes?: string | null;
 }
 
 export interface SubscriberStatusChangeRequest {
@@ -232,6 +235,11 @@ export interface ServiceAccountDetail {
   serviceNumber: string;
   status: ServiceAccountStatus;
   activatedAt: string | null;
+  installationAddress: string | null;
+  billingStartDate: string | null;
+  billingDueDay: number | null;
+  /** Account-specific monthly rate; null = plan price. */
+  currentRate: string | null;
   createdAt: string;
   updatedAt: string;
   subscriber: {
@@ -243,8 +251,13 @@ export interface ServiceAccountDetail {
   };
   plan: {
     id: number;
+    code: string | null;
     name: string;
     price: string;
+    installationFee: string;
+    reconnectionFee: string;
+    speedMbps: number | null;
+    channelCount: number | null;
     status: string;
   };
   service: {
@@ -273,12 +286,28 @@ export interface CreateServiceAccountRequest {
   status?: ServiceAccountStatus;
   collectionAreaId?: number;
   assignedCollectorId?: number;
+  installationAddress?: string;
+  billingStartDate?: string;
+  billingDueDay?: number;
+  currentRate?: string;
 }
 
 export interface UpdateServiceAccountRequest {
   planId?: number;
   status?: ServiceAccountStatus;
   activatedAt?: string | null;
+  installationAddress?: string | null;
+  billingStartDate?: string | null;
+  billingDueDay?: number | null;
+  currentRate?: string | null;
+}
+
+export interface ServiceHistoryEntry {
+  id: number;
+  at: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  actorName: string | null;
 }
 
 export interface ServiceAccountStatusChangeRequest {
@@ -319,6 +348,8 @@ export interface ReconnectionRecord {
   status: ReconnectionRecordStatus;
   notes: string | null;
   requestedByUserId: number | null;
+  completedByUserId: number | null;
+  billedInvoiceId: number | null;
   createdAt: string;
 }
 
@@ -333,9 +364,14 @@ export interface SuspendServiceAccountRequest {
 
 export interface ReconnectServiceAccountRequest {
   reason?: string;
+  /** Defaults to the plan's reconnection fee. */
   fee?: string;
   technicianUserId?: number;
   notes?: string;
+  /** Reconnect immediately instead of raising a field request. */
+  completeNow?: boolean;
+  /** Owner/Admin only, reason required: reconnect despite an overdue balance. */
+  overrideUnpaid?: boolean;
 }
 
 // Collections settings (matching api/src/routes/settings.ts)
@@ -388,9 +424,14 @@ export interface UpdateServiceRequest {
 export interface ServicePlan {
   id: number;
   serviceId: number;
+  code: string | null;
   name: string;
   description: string | null;
   price: string;
+  installationFee: string;
+  reconnectionFee: string;
+  speedMbps: number | null;
+  channelCount: number | null;
   status: ServiceStatus;
   createdAt: string;
   updatedAt: string;
@@ -405,16 +446,26 @@ export interface ServicePlanDetailResponse {
 }
 
 export interface CreatePlanRequest {
+  code?: string;
   name: string;
   description?: string;
   price: string; // priceSchema: non-negative amount with up to 2 decimal places
+  installationFee?: string;
+  reconnectionFee?: string;
+  speedMbps?: number | null;
+  channelCount?: number | null;
   status?: ServiceStatus;
 }
 
 export interface UpdatePlanRequest {
+  code?: string | null;
   name?: string;
   description?: string | null;
   price?: string;
+  installationFee?: string;
+  reconnectionFee?: string;
+  speedMbps?: number | null;
+  channelCount?: number | null;
   status?: ServiceStatus;
 }
 
@@ -1287,7 +1338,11 @@ export interface BcisDesktopApi {
     /** Suspend service account; writes a suspension_records row */
     suspend: (id: number, data: SuspendServiceAccountRequest) => Promise<ServiceAccountDetailResponse & { message?: string }>;
     /** Reconnect service account; writes a reconnection_records row */
-    reconnect: (id: number, data: ReconnectServiceAccountRequest) => Promise<ServiceAccountDetailResponse & { message?: string }>;
+    reconnect: (id: number, data: ReconnectServiceAccountRequest) => Promise<ServiceAccountDetailResponse & { message?: string; reconnection?: ReconnectionRecord }>;
+    /** Mark a requested reconnection completed (activates the account). */
+    completeReconnection: (id: number, reconnectionId: number, notes?: string) => Promise<ServiceAccountDetailResponse>;
+    /** All recorded changes to the account (spec 3.10 service history). */
+    getHistory: (id: number) => Promise<{ data: ServiceHistoryEntry[] }>;
     /** Suspension history, newest first */
     getSuspensionHistory: (id: number) => Promise<SuspensionHistoryResponse>;
     /** Reconnection history, newest first */

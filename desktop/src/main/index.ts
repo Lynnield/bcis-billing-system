@@ -35,6 +35,8 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  ReconnectionRecord,
+  ServiceHistoryEntry,
   ReportCatalogEntry,
   ReportRunParams,
   ReportRunResult,
@@ -422,6 +424,23 @@ function registerIpcHandlers(): void {
     return apiRequest<{ data: ReportRunResult }>(`/api/v1/reports/run/${slug}?${query.toString()}`, { method: "GET", token });
   });
 
+  ipcMain.handle("service-accounts:complete-reconnection", async (_event, payload: unknown): Promise<ServiceAccountDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const { id, reconnectionId, notes } = payload as { id: number; reconnectionId: number; notes?: string };
+    return apiRequest<ServiceAccountDetailResponse>(`/api/v1/service-accounts/${Number(id)}/reconnections/${Number(reconnectionId)}/complete`, {
+      method: "POST",
+      token,
+      body: notes ? { notes } : {},
+    });
+  });
+
+  ipcMain.handle("service-accounts:get-history", async (_event, id: unknown): Promise<{ data: ServiceHistoryEntry[] }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: ServiceHistoryEntry[] }>(`/api/v1/service-accounts/${Number(id)}/history`, { method: "GET", token });
+  });
+
   ipcMain.handle("search:query", async (_event, q: unknown): Promise<{ data: SearchHit[] }> => {
     const token = await getStoredToken();
     if (!token) throw new Error("No valid session");
@@ -745,7 +764,7 @@ function registerIpcHandlers(): void {
     });
   });
 
-  ipcMain.handle(IPC_SERVICE_ACCOUNTS_RECONNECT, async (_event, payload: unknown): Promise<ServiceAccountDetailResponse & { message?: string }> => {
+  ipcMain.handle(IPC_SERVICE_ACCOUNTS_RECONNECT, async (_event, payload: unknown): Promise<ServiceAccountDetailResponse & { message?: string; reconnection?: ReconnectionRecord }> => {
     const token = await getStoredToken();
     if (!token) {
       throw new Error("No valid session");

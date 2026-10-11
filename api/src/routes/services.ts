@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { services, servicePlans } from "../db/schema";
+import { auditLogs, services, servicePlans } from "../db/schema";
 import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
 
@@ -42,17 +42,31 @@ const priceSchema = z
   .trim()
   .regex(/^\d+(\.\d{1,2})?$/, "Price must be a non-negative amount with up to 2 decimal places");
 
+const planCode = z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9-]+$/, "Letters, digits and dashes only");
+
 const createPlanSchema = z.object({
+  code: planCode.optional(),
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(2000).optional(),
   price: priceSchema,
+  installationFee: priceSchema.optional(),
+  reconnectionFee: priceSchema.optional(),
+  speedMbps: z.number().int().min(1).max(100_000).nullable().optional(),
+  channelCount: z.number().int().min(1).max(10_000).nullable().optional(),
   status: z.enum(STATUS_VALUES).optional(),
 }).strict();
 
 const updatePlanSchema = z.object({
+  code: planCode.nullable().optional(),
   name: z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
+  // Spec 3.3: a price change only affects future billing — issued invoices
+  // keep the rate copied onto their line items.
   price: priceSchema.optional(),
+  installationFee: priceSchema.optional(),
+  reconnectionFee: priceSchema.optional(),
+  speedMbps: z.number().int().min(1).max(100_000).nullable().optional(),
+  channelCount: z.number().int().min(1).max(10_000).nullable().optional(),
   status: z.enum(STATUS_VALUES).optional(),
 }).strict();
 
@@ -144,9 +158,16 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     if (!service) return reply.code(404).send({ message: "Service not found" });
     try {
       const [row] = await db.insert(servicePlans).values({ ...parsed.data, serviceId: service.id }).returning();
+      await db.insert(auditLogs).values({
+        actorUserId: request.currentUser!.id,
+        action: "service_plan.create",
+        entityType: "service_plan",
+        entityId: row!.id,
+        metadata: { new: parsed.data },
+      });
       return reply.code(201).send({ data: row });
     } catch (err) {
-      if (isConflict(err)) return reply.code(409).send({ message: "A plan with that name already exists for this service" });
+      if (isConflict(err)) return reply.code(409).send({ message: "A plan with that name or code already exists" });
       throw err;
     }
   });
@@ -158,11 +179,20 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) return reply.code(400).send({ message: "Invalid update data", issues: parsed.error.issues });
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ message: "No fields to update" });
     try {
+      const [before] = await db.select().from(servicePlans).where(eq(servicePlans.id, params.data.id)).limit(1);
+      if (!before) return reply.code(404).send({ message: "Service plan not found" });
       const [row] = await db.update(servicePlans).set(parsed.data).where(eq(servicePlans.id, params.data.id)).returning();
-      if (!row) return reply.code(404).send({ message: "Service plan not found" });
+      const old = Object.fromEntries(Object.keys(parsed.data).map((k) => [k, (before as Record<string, unknown>)[k]]));
+      await db.insert(auditLogs).values({
+        actorUserId: request.currentUser!.id,
+        action: "service_plan.update",
+        entityType: "service_plan",
+        entityId: before.id,
+        metadata: { old, new: parsed.data },
+      });
       return reply.send({ data: row });
     } catch (err) {
-      if (isConflict(err)) return reply.code(409).send({ message: "A plan with that name already exists for this service" });
+      if (isConflict(err)) return reply.code(409).send({ message: "A plan with that name or code already exists" });
       throw err;
     }
   });
