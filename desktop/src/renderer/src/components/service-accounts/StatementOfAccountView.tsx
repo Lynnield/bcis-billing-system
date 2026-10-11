@@ -1,6 +1,8 @@
+import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { getSoa } from "@/lib/report-api";
 import type { AgingBucketKey } from "@/shared/types";
@@ -22,9 +24,14 @@ const bucketBadgeVariant: Record<string, "default" | "warning" | "destructive" |
 };
 
 export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOfAccountViewProps) {
+  // Spec 3.5: printable for a selected date range. Defaults to this month.
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = React.useState(`${today.slice(0, 8)}01`);
+  const [dateTo, setDateTo] = React.useState(today);
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["soa", serviceAccountId],
-    queryFn: () => getSoa(serviceAccountId),
+    queryKey: ["soa", serviceAccountId, dateFrom, dateTo],
+    queryFn: () => getSoa(serviceAccountId, { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+    placeholderData: (prev) => prev,
   });
 
   if (isLoading) {
@@ -76,9 +83,17 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
         </Button>
       </div>
 
-      <div>
-        <h2 className="text-2xl font-semibold">Statement of Account</h2>
-        <p className="text-muted-foreground">Generated {new Date(data.meta.generatedAt).toLocaleString()}</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold">Statement of Account</h2>
+          <p className="text-muted-foreground">
+            Period {dateFrom || "(start)"} to {dateTo || "(today)"} · Generated {new Date(data.meta.generatedAt).toLocaleString()}
+          </p>
+        </div>
+        <div className="flex gap-2 print:hidden">
+          <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -110,6 +125,54 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
           <p className="text-2xl font-bold tabular-nums text-destructive">{formatPeso(totals.overdueBalance)}</p>
         </div>
       </div>
+
+      {data.data.statement && (
+        <div>
+          <h3 className="font-medium mb-2">Account Activity</h3>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Charges</TableHead>
+                  <TableHead className="text-right">Payments / Credits</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell>{dateFrom}</TableCell>
+                  <TableCell />
+                  <TableCell className="font-medium">Opening balance</TableCell>
+                  <TableCell />
+                  <TableCell />
+                  <TableCell className="text-right tabular-nums font-medium">{formatPeso(data.data.statement.openingBalance)}</TableCell>
+                </TableRow>
+                {data.data.statement.entries.map((e, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="whitespace-nowrap">{e.date}</TableCell>
+                    <TableCell className="font-mono text-xs">{e.reference}</TableCell>
+                    <TableCell>{e.description}</TableCell>
+                    <TableCell className="text-right tabular-nums">{e.debit !== "0.00" ? formatPeso(e.debit) : ""}</TableCell>
+                    <TableCell className="text-right tabular-nums">{e.credit !== "0.00" ? formatPeso(e.credit) : ""}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(e.runningBalance)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow>
+                  <TableCell>{dateTo}</TableCell>
+                  <TableCell />
+                  <TableCell className="font-semibold">Closing balance</TableCell>
+                  <TableCell className="text-right tabular-nums font-semibold">{formatPeso(data.data.statement.charges)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-semibold">{formatPeso(data.data.statement.credits)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-semibold">{formatPeso(data.data.statement.closingBalance)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       <div>
         <h3 className="font-medium mb-2">Outstanding Invoices</h3>

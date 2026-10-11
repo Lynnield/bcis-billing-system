@@ -313,7 +313,8 @@ const api: BcisDesktopApi = {
   reports: {
     export: (request: ReportExportRequest): Promise<ReportExportResult> => ipcRenderer.invoke("reports:export", request),
     getLedger: (serviceAccountId: number): Promise<LedgerResponse> => ipcRenderer.invoke("reports:get-ledger", serviceAccountId),
-    getSoa: (serviceAccountId: number): Promise<SoaResponse> => ipcRenderer.invoke("reports:get-soa", serviceAccountId),
+    getSoa: (serviceAccountId: number, range?: { dateFrom?: string; dateTo?: string }): Promise<SoaResponse> =>
+      ipcRenderer.invoke("reports:get-soa", { serviceAccountId, range }),
     getCatalog: (): Promise<{ data: ReportCatalogEntry[] }> => ipcRenderer.invoke("reports:get-catalog"),
     run: (slug: string, params: ReportRunParams): Promise<{ data: ReportRunResult }> => ipcRenderer.invoke("reports:run", { slug, params }),
   },

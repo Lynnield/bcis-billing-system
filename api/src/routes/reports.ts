@@ -143,6 +143,8 @@ async function computeLedger(serviceAccountId: number): Promise<{
       paymentStatus: payments.status,
       paymentDate: payments.paymentDate,
       postedAt: payments.postedAt,
+      receiptNumber: payments.receiptNumber,
+      method: payments.method,
       reversalDate: paymentReversals.reversedAt,
     })
     .from(paymentAllocations)
@@ -150,15 +152,21 @@ async function computeLedger(serviceAccountId: number): Promise<{
     .leftJoin(paymentReversals, eq(paymentReversals.paymentId, payments.id))
     .where(eq(payments.serviceAccountId, account.id));
 
+  // Subscriber-facing references: receipt and invoice numbers, not row IDs.
+  const invoiceNumberById = new Map(accountInvoices.map((i) => [i.id, i.invoiceNumber]));
+  const METHOD: Record<string, string> = { cash: "Cash", gcash: "GCash", bank_transfer: "Bank transfer", cheque: "Cheque", other: "Other" };
   for (const a of allocations) {
     const amt = parseMoneyToCents(a.amount) ?? 0n;
+    const receipt = a.receiptNumber ?? `payment #${a.paymentId}`;
+    const invoiceNo = invoiceNumberById.get(a.invoiceId) ?? `invoice #${a.invoiceId}`;
+    const method = METHOD[a.method] ?? a.method;
     const paymentDateStr = a.postedAt ? a.postedAt.toISOString().slice(0, 10) : a.paymentDate.toISOString().slice(0, 10);
     if (a.paymentStatus === "posted") {
       entries.push({
         date: paymentDateStr,
         type: "payment",
-        reference: `payment #${a.paymentId}`,
-        description: `Payment allocation #${a.allocationId} for invoice #${a.invoiceId}`,
+        reference: receipt,
+        description: `${method} payment applied to ${invoiceNo}`,
         debitCents: 0n,
         creditCents: amt,
         runningBalanceCents: 0n,
@@ -167,8 +175,8 @@ async function computeLedger(serviceAccountId: number): Promise<{
       entries.push({
         date: paymentDateStr,
         type: "payment (reversed)",
-        reference: `payment #${a.paymentId}`,
-        description: `Payment #${a.paymentId} (later reversed) applied to invoice #${a.invoiceId}`,
+        reference: receipt,
+        description: `${method} payment applied to ${invoiceNo} (later reversed)`,
         debitCents: 0n,
         creditCents: amt,
         runningBalanceCents: 0n,
@@ -176,8 +184,8 @@ async function computeLedger(serviceAccountId: number): Promise<{
       entries.push({
         date: a.reversalDate ? a.reversalDate.toISOString().slice(0, 10) : paymentDateStr,
         type: "reversal",
-        reference: `reversal of payment #${a.paymentId}`,
-        description: `Reversal restores invoice #${a.invoiceId} balance`,
+        reference: `reversal of ${receipt}`,
+        description: `Reversal restores the ${invoiceNo} balance`,
         debitCents: amt,
         creditCents: 0n,
         runningBalanceCents: 0n,
@@ -195,6 +203,32 @@ async function computeLedger(serviceAccountId: number): Promise<{
   }
 
   return { account, entries, closingBalanceCents: running };
+}
+
+const soaRangeSchema = z.object({ dateFrom: dateString.optional(), dateTo: dateString.optional() });
+
+/**
+ * Spec 3.5: Statement of Account for a selected date range — opening
+ * balance, the period's ledger entries, closing balance. Uses the same
+ * ledger computation as /reports/ledger, so the two always agree.
+ */
+async function statementForRange(serviceAccountId: number, dateFrom?: string, dateTo?: string) {
+  const ledger = await computeLedger(serviceAccountId);
+  if (!ledger) return null;
+  let opening = 0n;
+  const entries = [];
+  for (const e of ledger.entries) {
+    if (dateFrom && e.date < dateFrom) {
+      opening = e.runningBalanceCents;
+      continue;
+    }
+    if (dateTo && e.date > dateTo) break;
+    entries.push(e);
+  }
+  const closing = entries.length ? entries[entries.length - 1]!.runningBalanceCents : opening;
+  const charges = entries.reduce((t, e) => t + e.debitCents, 0n);
+  const credits = entries.reduce((t, e) => t + e.creditCents, 0n);
+  return { opening, closing, charges, credits, entries };
 }
 
 function dateRangeQuery(where: string) {
@@ -567,6 +601,11 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   app.get("/api/v1/reports/soa/:serviceAccountId", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const params = z.object({ serviceAccountId: z.coerce.number().int().positive() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
+    const range = soaRangeSchema.safeParse(request.query ?? {});
+    if (!range.success) return reply.code(400).send({ message: "dateFrom/dateTo must be YYYY-MM-DD" });
+    if (range.data.dateFrom && range.data.dateTo && range.data.dateFrom > range.data.dateTo) {
+      return reply.code(400).send({ message: "dateFrom must not be after dateTo" });
+    }
 
     const [acc] = await db
       .select({
@@ -642,6 +681,27 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
           overdueBalance: formatCents(overdueTotal),
           aging: Object.fromEntries(AGING_BUCKETS.map((b) => [b, formatCents(bucketTotals[b] ?? 0n)])),
         },
+        statement: await (async () => {
+          const st = await statementForRange(acc.id, range.data.dateFrom, range.data.dateTo);
+          if (!st) return null;
+          return {
+            dateFrom: range.data.dateFrom ?? null,
+            dateTo: range.data.dateTo ?? null,
+            openingBalance: formatCents(st.opening),
+            charges: formatCents(st.charges),
+            credits: formatCents(st.credits),
+            closingBalance: formatCents(st.closing),
+            entries: st.entries.map((e) => ({
+              date: e.date,
+              type: e.type,
+              reference: e.reference,
+              description: e.description,
+              debit: formatCents(e.debitCents),
+              credit: formatCents(e.creditCents),
+              runningBalance: formatCents(e.runningBalanceCents),
+            })),
+          };
+        })(),
       },
       meta: { generatedAt: new Date().toISOString(), basis: "Derived from existing transactional data; safe for PDF SOA rendering" },
     });
@@ -670,6 +730,37 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       .where(eq(serviceAccounts.id, params.data.serviceAccountId))
       .limit(1);
     if (!acc) return reply.code(404).send({ message: "Service account not found" });
+
+    const range = soaRangeSchema.safeParse(request.query ?? {});
+    if (!range.success) return reply.code(400).send({ message: "dateFrom/dateTo must be YYYY-MM-DD" });
+    if (range.data.dateFrom || range.data.dateTo) {
+      const st = await statementForRange(acc.id, range.data.dateFrom, range.data.dateTo);
+      const rows = [
+        { date: range.data.dateFrom ?? "", reference: "", description: "Opening balance", debit: "", credit: "", balance: formatCents(st!.opening) },
+        ...st!.entries.map((e) => ({
+          date: e.date,
+          reference: e.reference,
+          description: e.description,
+          debit: e.debitCents ? formatCents(e.debitCents) : "",
+          credit: e.creditCents ? formatCents(e.creditCents) : "",
+          balance: formatCents(e.runningBalanceCents),
+        })),
+        { date: range.data.dateTo ?? "", reference: "", description: "Closing balance", debit: formatCents(st!.charges), credit: formatCents(st!.credits), balance: formatCents(st!.closing) },
+      ];
+      return sendExport(reply, `soa-${acc.serviceNumber}`, fmt.data.format, {
+        title: `Statement of Account — ${acc.firstName} ${acc.lastName}`,
+        subtitle: `${acc.serviceName} (${acc.planName}) · Service Account: ${acc.serviceNumber} · Acct #: ${acc.accountNumber} · Period ${range.data.dateFrom ?? "(start)"} to ${range.data.dateTo ?? "(today)"}`,
+        columns: [
+          { key: "date", header: "Date" },
+          { key: "reference", header: "Reference" },
+          { key: "description", header: "Description" },
+          { key: "debit", header: "Charges", align: "right" },
+          { key: "credit", header: "Payments / Credits", align: "right" },
+          { key: "balance", header: "Balance", align: "right" },
+        ],
+        rows,
+      });
+    }
 
     const balanceRows = await getInvoiceBalances({ serviceAccountId: acc.id });
     const outstanding = balanceRows.filter((r) => r.balanceCents > 0n);

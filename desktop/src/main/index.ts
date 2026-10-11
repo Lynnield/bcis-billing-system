@@ -1522,12 +1522,16 @@ function registerIpcHandlers(): void {
     return apiRequest<LedgerResponse>(`/api/v1/reports/ledger/${serviceAccountId}`, { method: "GET", token });
   });
 
-  ipcMain.handle(IPC_REPORTS_GET_SOA, async (_event, serviceAccountId: unknown): Promise<SoaResponse> => {
+  ipcMain.handle(IPC_REPORTS_GET_SOA, async (_event, payload: unknown): Promise<SoaResponse> => {
     const token = await getStoredToken();
     if (!token) {
       throw new Error("No valid session");
     }
-    return apiRequest<SoaResponse>(`/api/v1/reports/soa/${serviceAccountId}`, { method: "GET", token });
+    const { serviceAccountId, range } = payload as { serviceAccountId: number; range?: { dateFrom?: string; dateTo?: string } };
+    const query = new URLSearchParams();
+    if (range?.dateFrom) query.set("dateFrom", range.dateFrom);
+    if (range?.dateTo) query.set("dateTo", range.dateTo);
+    return apiRequest<SoaResponse>(`/api/v1/reports/soa/${Number(serviceAccountId)}?${query.toString()}`, { method: "GET", token });
   });
 
   // Payment proofs are read from disk and uploaded by the main process; the

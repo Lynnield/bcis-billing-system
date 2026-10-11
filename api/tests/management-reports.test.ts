@@ -165,3 +165,19 @@ describe("management reports (spec 3.11)", () => {
     expect((await run("owner", "remittances", "dateFrom=2041-04-01&dateTo=2041-03-01")).statusCode).toBe(400);
   });
 });
+
+describe("Statement of Account for a date range (spec 3.5)", () => {
+  it("carries the balance before the period as the opening balance", async () => {
+    const whole = (await app.inject({ method: "GET", url: `/api/v1/reports/soa/${accountId}?dateFrom=2041-03-01&dateTo=2041-03-31`, headers: auth("owner") })).json().data.statement;
+    expect(whole).toMatchObject({ openingBalance: "0.00", charges: "1000.00", closingBalance: "1000.00" });
+    expect(whole.entries).toHaveLength(1);
+
+    const later = (await app.inject({ method: "GET", url: `/api/v1/reports/soa/${accountId}?dateFrom=2041-03-02&dateTo=2041-03-31`, headers: auth("owner") })).json().data.statement;
+    expect(later).toMatchObject({ openingBalance: "1000.00", charges: "0.00", closingBalance: "1000.00" });
+    expect(later.entries).toHaveLength(0);
+
+    const pdf = await app.inject({ method: "GET", url: `/api/v1/reports/soa/${accountId}/export?format=pdf&dateFrom=2041-03-01&dateTo=2041-03-31`, headers: auth("owner") });
+    expect(pdf.statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: `/api/v1/reports/soa/${accountId}?dateFrom=2041-04-01&dateTo=2041-03-01`, headers: auth("owner") })).statusCode).toBe(400);
+  });
+});

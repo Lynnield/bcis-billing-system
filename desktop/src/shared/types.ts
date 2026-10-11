@@ -1129,6 +1129,16 @@ export interface SoaResponse {
     outstandingInvoices: SoaOutstandingInvoice[];
     recentPayments: Array<{ id: number; amount: string; method: string; status: string; paymentDate: string; receiptNumber: string | null }>;
     totals: { outstandingBalance: string; overdueBalance: string; aging: Record<string, string> };
+    /** Period statement (spec 3.5): opening balance, activity, closing balance. */
+    statement: {
+      dateFrom: string | null;
+      dateTo: string | null;
+      openingBalance: string;
+      charges: string;
+      credits: string;
+      closingBalance: string;
+      entries: Array<{ date: string; type: string; reference: string; description: string; debit: string; credit: string; runningBalance: string }>;
+    } | null;
   };
   meta: { generatedAt: string; basis: string };
 }
@@ -1560,7 +1570,7 @@ export interface BcisDesktopApi {
     /** Full chronological ledger with running balance for one service account. */
     getLedger: (serviceAccountId: number) => Promise<LedgerResponse>;
     /** Statement of Account (outstanding invoices + totals) for one service account. */
-    getSoa: (serviceAccountId: number) => Promise<SoaResponse>;
+    getSoa: (serviceAccountId: number, range?: { dateFrom?: string; dateTo?: string }) => Promise<SoaResponse>;
     /** Management reports this user may run (spec 3.11). */
     getCatalog: () => Promise<{ data: ReportCatalogEntry[] }>;
     /** Run a management report for on-screen display. */

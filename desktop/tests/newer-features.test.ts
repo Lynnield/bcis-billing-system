@@ -160,11 +160,11 @@ describe("report-api IPC wrappers", () => {
 
     await exportReport("/tmp/out.pdf", "pdf", "collections-report");
     await getLedgerFn(42);
-    await getSoaFn(42);
+    await getSoaFn(42, { dateFrom: "2026-10-01", dateTo: "2026-10-31" });
 
     expect(exportFn).toHaveBeenCalledWith({ path: "/tmp/out.pdf", format: "pdf", suggestedName: "collections-report" });
     expect(getLedger).toHaveBeenCalledWith(42);
-    expect(getSoa).toHaveBeenCalledWith(42);
+    expect(getSoa).toHaveBeenCalledWith(42, { dateFrom: "2026-10-01", dateTo: "2026-10-31" });
   });
 });
 

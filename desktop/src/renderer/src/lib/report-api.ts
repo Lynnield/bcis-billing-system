@@ -13,6 +13,6 @@ export async function getLedger(serviceAccountId: number): Promise<LedgerRespons
   return window.bcis.reports.getLedger(serviceAccountId);
 }
 
-export async function getSoa(serviceAccountId: number): Promise<SoaResponse> {
-  return window.bcis.reports.getSoa(serviceAccountId);
+export async function getSoa(serviceAccountId: number, range?: { dateFrom?: string; dateTo?: string }): Promise<SoaResponse> {
+  return window.bcis.reports.getSoa(serviceAccountId, range);
 }
