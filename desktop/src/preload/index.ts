@@ -41,6 +41,7 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  PermissionMatrix,
   ReconnectionRecord,
   ServiceHistoryEntry,
   ReportCatalogEntry,
@@ -317,6 +318,11 @@ const api: BcisDesktopApi = {
   audit: {
     getList: (params: AuditLogQuery): Promise<AuditLogListResponse> => ipcRenderer.invoke("audit:get-list", params),
     getActions: (): Promise<{ data: string[] }> => ipcRenderer.invoke("audit:get-actions"),
+  },
+  permissions: {
+    getMatrix: (): Promise<{ data: PermissionMatrix }> => ipcRenderer.invoke("permissions:get-matrix"),
+    updateRole: (roleId: number, permissions: string[]): Promise<{ data: { roleId: number; permissions: string[] } }> =>
+      ipcRenderer.invoke("permissions:update-role", { roleId, permissions }),
   },
   search: {
     query: (q: string): Promise<{ data: SearchHit[] }> => ipcRenderer.invoke("search:query", q),

@@ -3,11 +3,9 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { applicationSettings, auditLogs } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
-const READ_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR];
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
 
 // Settings 3.10 cares about: how many days of grace before an overdue
 // account becomes a suspension candidate, and the threshold (in days
@@ -36,11 +34,11 @@ async function loadSettings(): Promise<SettingsShape> {
 }
 
 export default async function settingsRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/settings/collections", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (_request, reply) => {
+  app.get("/api/v1/settings/collections", { preHandler: [authenticate, requirePermission("settings.view")] }, async (_request, reply) => {
     return reply.send({ data: await loadSettings() });
   });
 
-  app.put("/api/v1/settings/collections", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.put("/api/v1/settings/collections", { preHandler: [authenticate, requirePermission("settings.manage")] }, async (request, reply) => {
     const parsed = SETTINGS_SCHEMA.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid settings data", issues: parsed.error.issues });
 

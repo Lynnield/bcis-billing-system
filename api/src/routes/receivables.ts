@@ -2,21 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AGING_BUCKETS, bucketFor, daysOverdue, getInvoiceBalances, todayDateString } from "../lib/receivables";
 import { formatCents } from "../lib/money";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { db } from "../db";
 import { serviceAccounts, subscribers } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -46,7 +37,7 @@ function summarize(rows: Array<{ balanceCents: bigint; dueDate: Date | string }>
 }
 
 export default async function receivableRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/receivables/service-accounts/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/receivables/service-accounts/:id", { preHandler: [authenticate, requirePermission("receivable.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
 
@@ -105,7 +96,7 @@ export default async function receivableRoutes(app: FastifyInstance): Promise<vo
     });
   });
 
-  app.get("/api/v1/receivables/invoices", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/receivables/invoices", { preHandler: [authenticate, requirePermission("receivable.view")] }, async (request, reply) => {
     const query = z.object({
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -144,7 +135,7 @@ export default async function receivableRoutes(app: FastifyInstance): Promise<vo
     });
   });
 
-  app.get("/api/v1/receivables/aging", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/receivables/aging", { preHandler: [authenticate, requirePermission("receivable.view")] }, async (request, reply) => {
     const query = z.object({
       serviceAccountId: z.coerce.number().int().positive().optional(),
       subscriberId: z.coerce.number().int().positive().optional(),
@@ -174,7 +165,7 @@ export default async function receivableRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: { buckets: summary, total: { count: Object.values(bucketCounts).reduce((a, b) => a + b, 0), amount: formatCents(total) } } });
   });
 
-  app.get("/api/v1/receivables/suspension-candidates", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/receivables/suspension-candidates", { preHandler: [authenticate, requirePermission("receivable.view")] }, async (request, reply) => {
     // Explicit rule: an account is a candidate when it has at least one
     // outstanding invoice whose due date is before today (overdue).
     const rows = await getInvoiceBalances();

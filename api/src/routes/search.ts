@@ -3,21 +3,9 @@ import { z } from "zod";
 import { eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { gcashPaymentDetails, invoices, payments, serviceAccounts, servicePlans, subscribers } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { hasPermission, requirePermission } from "../lib/permissions";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-// Technicians see service information only (spec 3.1), so financial
-// documents (invoices, receipts, GCash references) are not searched for them.
-const FINANCIAL_ROLES = READ_ROLES.filter((r) => r !== ROLE_NAMES.TECHNICIAN);
 
 const querySchema = z.object({
   q: z.string().trim().min(2).max(100),
@@ -49,12 +37,14 @@ export interface SearchHit {
 // receipt number, invoice number and GCash reference. Every hit resolves to
 // a service account, which is what the cashier/operator acts on.
 export default async function searchRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/search", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/search", { preHandler: [authenticate, requirePermission("subscriber.view")] }, async (request, reply) => {
     const parsed = querySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Enter at least 2 characters to search" });
     const { q, limit } = parsed.data;
     const term = likeContains(q);
-    const canSeeFinancial = request.currentUser!.roles.some((r) => (FINANCIAL_ROLES as string[]).includes(r));
+    // Invoices, receipts and GCash references are financial documents; roles
+    // without search.financial (by default the Technician) see accounts only.
+    const canSeeFinancial = hasPermission(request, "search.financial");
 
     const accountColumns = {
       subscriberId: subscribers.id,

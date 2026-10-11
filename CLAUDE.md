@@ -14,9 +14,10 @@ API. Built for the BCIS lab activity spec in `docs/` — see
   `contextIsolation: true`, `nodeIntegration: false`. The main process alone holds the
   token (`electron-store` + `safeStorage`). Renderer only calls `window.bcis.*`
   (defined in `desktop/src/preload/index.ts`).
-- **RBAC is enforced server-side only.** `requireRoles` preHandlers in `api/src/routes/*.ts`
-  are authoritative; desktop-side role checks (`desktop/src/renderer/src/lib/roles.ts`)
-  are UX convenience only — hiding a button is not authorization.
+- **RBAC is enforced server-side only.** `requirePermission("code")` preHandlers in
+  `api/src/routes/*.ts` are authoritative. Permission codes and their default role grants
+  live in `api/src/lib/permissions.ts` (synced on start-up; the Owner edits grants).
+  Desktop-side checks (`desktop/src/renderer/src/lib/roles.ts`) are UX convenience only — hiding a button is not authorization.
 - **Posted financial records are reversed/adjusted, never deleted.** Payments go through
   `POST /payments/:id/reverse`; invoices are voided, not dropped.
 - **Every schema change is a Drizzle migration.** Edit `api/src/db/schema.ts`, generate
@@ -35,7 +36,7 @@ API. Built for the BCIS lab activity spec in `docs/` — see
 ## Reusable patterns worth following
 
 - `api/src/routes/payments.ts` is the reference implementation for a route module:
-  Zod schemas, role-gated preHandlers, a DB transaction for multi-step financial
+  Zod schemas, permission-gated preHandlers, a DB transaction for multi-step financial
   posting, and an audit-log write on every mutation.
 - `desktop/src/renderer/src/components/dashboard/PlaceholderPage.tsx` is the stand-in
   used for nav items not yet wired to a real screen — check `App.tsx` for which routes

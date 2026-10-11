@@ -3,13 +3,9 @@ import { z } from "zod";
 import { and, desc, eq, gte, ilike, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLogs, users } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
-// Spec 3.1: the Owner and Accounting/Auditor review audit trails.
-// Spec 4.4: audit logs are not editable through the application — this
-// module deliberately exposes read routes only.
-export const AUDIT_READ_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ACCOUNTING_AUDITOR];
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 
@@ -51,7 +47,7 @@ export const auditColumns = {
 };
 
 export default async function auditRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/audit-logs", { preHandler: [authenticate, requireRoles(...AUDIT_READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/audit-logs", { preHandler: [authenticate, requirePermission("audit.view")] }, async (request, reply) => {
     const parsed = auditQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { page, pageSize, ...filters } = parsed.data;
@@ -72,7 +68,7 @@ export default async function auditRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Distinct action names, for the filter dropdown.
-  app.get("/api/v1/audit-logs/actions", { preHandler: [authenticate, requireRoles(...AUDIT_READ_ROLES)] }, async (_request, reply) => {
+  app.get("/api/v1/audit-logs/actions", { preHandler: [authenticate, requirePermission("audit.view")] }, async (_request, reply) => {
     const rows = await db.selectDistinct({ action: auditLogs.action }).from(auditLogs).orderBy(auditLogs.action);
     return reply.send({ data: rows.map((r) => r.action) });
   });

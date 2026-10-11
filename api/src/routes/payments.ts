@@ -12,29 +12,12 @@ import {
   payments,
   serviceAccounts,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { deriveInvoiceStatus, isInvoiceOpen, refreshInvoiceStatus } from "../lib/invoice-status";
 import { getInvoiceBalances } from "../lib/receivables";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const POST_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.CASHIER];
-const REVERSE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.ACCOUNTING_AUDITOR];
-// GCash verification/rejection is a financial-integrity gate kept separate
-// from day-to-day cashiering: Cashiers (POST_ROLES) can submit a GCash
-// payment but cannot decide it themselves. Currently the same roster as
-// REVERSE_ROLES, named distinctly since the two authorities are conceptually
-// different even though they coincide today.
-const VERIFY_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.ACCOUNTING_AUDITOR];
 
 const PAYMENT_METHODS = ["cash", "gcash", "bank_transfer", "cheque", "other"] as const;
 
@@ -151,7 +134,7 @@ async function allocateToOpenInvoices(
 }
 
 export default async function paymentRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/payments", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/payments", { preHandler: [authenticate, requirePermission("payment.view")] }, async (request, reply) => {
     const query = z.object({
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -188,7 +171,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
   // date first, posted-payment allocations as the balance basis. Nothing is
   // written; the real allocation is recomputed inside the posting
   // transaction, so a concurrent payment can never be double-applied.
-  app.get("/api/v1/payments/allocation-preview", { preHandler: [authenticate, requireRoles(...POST_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/payments/allocation-preview", { preHandler: [authenticate, requirePermission("payment.create")] }, async (request, reply) => {
     const query = z.object({ serviceAccountId: z.coerce.number().int().positive(), amount: moneyString }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ message: "serviceAccountId and a valid amount are required" });
     const amountCents = parseMoneyToCents(query.data.amount);
@@ -228,7 +211,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
-  app.get("/api/v1/payments/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/payments/:id", { preHandler: [authenticate, requirePermission("payment.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid payment ID" });
 
@@ -275,7 +258,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
-  app.post("/api/v1/payments", { preHandler: [authenticate, requireRoles(...POST_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/payments", { preHandler: [authenticate, requirePermission("payment.create")] }, async (request, reply) => {
     const parsed = createPaymentSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid payment data", issues: parsed.error.issues });
 
@@ -399,7 +382,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/payments/:id/verify", { preHandler: [authenticate, requireRoles(...VERIFY_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/payments/:id/verify", { preHandler: [authenticate, requirePermission("payment.verify_gcash")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid payment ID" });
     const parsed = verifySchema.safeParse(request.body ?? {});
@@ -514,7 +497,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/payments/:id/reject", { preHandler: [authenticate, requireRoles(...VERIFY_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/payments/:id/reject", { preHandler: [authenticate, requirePermission("payment.verify_gcash")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid payment ID" });
     const parsed = rejectSchema.safeParse(request.body);
@@ -585,7 +568,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/payments/:id/reverse", { preHandler: [authenticate, requireRoles(...REVERSE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/payments/:id/reverse", { preHandler: [authenticate, requirePermission("payment.reverse")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid payment ID" });
     const parsed = reversalSchema.safeParse(request.body);

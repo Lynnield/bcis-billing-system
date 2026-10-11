@@ -3,8 +3,8 @@ import { z } from "zod";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db";
 import { auditLogs, paymentProofs } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import {
   ALLOWED_PROOF_TYPES,
   AttachmentValidationError,
@@ -15,15 +15,6 @@ import {
   validateProof,
 } from "../lib/attachments";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-];
-// Same roster that may record a payment (api/src/routes/payments.ts POST_ROLES).
-const UPLOAD_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.CASHIER];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -37,7 +28,7 @@ const uploadSchema = z.object({
 export default async function paymentProofRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     "/api/v1/payment-proofs",
-    { preHandler: [authenticate, requireRoles(...UPLOAD_ROLES)], bodyLimit: 8 * 1024 * 1024 },
+    { preHandler: [authenticate, requirePermission("payment.create")], bodyLimit: 8 * 1024 * 1024 },
     async (request, reply) => {
       const parsed = uploadSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -88,7 +79,7 @@ export default async function paymentProofRoutes(app: FastifyInstance): Promise<
     },
   );
 
-  app.get("/api/v1/payment-proofs/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/payment-proofs/:id", { preHandler: [authenticate, requirePermission("payment_proof.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid proof ID" });
     const [row] = await db.select().from(paymentProofs).where(eq(paymentProofs.id, params.data.id)).limit(1);
@@ -100,7 +91,7 @@ export default async function paymentProofRoutes(app: FastifyInstance): Promise<
     return reply.send({ data: toDto(row), duplicates });
   });
 
-  app.get("/api/v1/payment-proofs/:id/file", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/payment-proofs/:id/file", { preHandler: [authenticate, requirePermission("payment_proof.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid proof ID" });
     const [row] = await db.select().from(paymentProofs).where(eq(paymentProofs.id, params.data.id)).limit(1);

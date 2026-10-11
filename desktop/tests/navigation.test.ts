@@ -40,6 +40,7 @@ describe("Phase 13C — Navigation & Dashboard Tests", () => {
         "services",
         "reports",
         "user-management",
+        "permissions",
         "settings",
         "audit-log",
         "backup",
@@ -73,6 +74,15 @@ describe("Phase 13C — Navigation & Dashboard Tests", () => {
         expect(keys).toContain(k);
       }
       for (const k of ["receive-payment", "user-management", "backup"]) expect(keys).not.toContain(k);
+    });
+
+    it("server permissions, when present, decide visibility instead of roles", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      // A Cashier whom the Owner has also granted GCash review.
+      const keys = visibleRouteKeys({ ...u(["Cashier"]), permissions: ["payment.create", "payment.view", "payment.verify_gcash"] });
+      expect(keys).toEqual(["dashboard", "receive-payment", "payments", "gcash-verification"]);
+      // And a role stripped of everything sees only the dashboard.
+      expect(visibleRouteKeys({ ...u(["Administrator"]), permissions: [] })).toEqual(["dashboard"]);
     });
 
     it("Read-only Viewer gets dashboards and reports only (spec 3.1)", async () => {

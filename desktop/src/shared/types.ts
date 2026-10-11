@@ -23,6 +23,8 @@ export interface AuthUser {
   email: string;
   fullName: string;
   roles: string[];
+  /** Permission codes from the server (spec 4.4); absent on stale sessions. */
+  permissions?: string[];
 }
 
 /** Request payload for POST /api/v1/auth/login */
@@ -927,6 +929,11 @@ export interface ReportRunResult {
   totals?: Record<string, string | number>;
 }
 
+export interface PermissionMatrix {
+  permissions: Array<{ code: string; group: string; description: string }>;
+  roles: Array<{ id: number; name: string; permissions: string[] }>;
+}
+
 export interface SearchHit {
   kind: "service_account" | "invoice" | "payment";
   matchedOn: string;
@@ -1516,6 +1523,12 @@ export interface BcisDesktopApi {
     /** Read-only audit trail (Owner, Accounting / Auditor). */
     getList: (params: AuditLogQuery) => Promise<AuditLogListResponse>;
     getActions: () => Promise<{ data: string[] }>;
+  };
+  permissions: {
+    /** Role/permission matrix (user.view). */
+    getMatrix: () => Promise<{ data: PermissionMatrix }>;
+    /** Replace one role's permissions (user.manage, audited). */
+    updateRole: (roleId: number, permissions: string[]) => Promise<{ data: { roleId: number; permissions: string[] } }>;
   };
   search: {
     /** Global search: account no., name, contact, address, invoice no., receipt no., GCash ref. */

@@ -23,6 +23,7 @@ import searchRoutes from "./routes/search";
 import auditRoutes from "./routes/audit";
 import managementReportRoutes from "./routes/management-reports";
 import type { AuthUser } from "./lib/auth";
+import { syncPermissions } from "./lib/permissions";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -38,6 +39,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.decorateRequest("currentUser", null);
+  await syncPermissions();
 
   await app.register(cors, { origin: true });
   await app.register(sensible);

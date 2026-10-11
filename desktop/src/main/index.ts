@@ -35,6 +35,7 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  PermissionMatrix,
   ReconnectionRecord,
   ServiceHistoryEntry,
   ReportCatalogEntry,
@@ -439,6 +440,24 @@ function registerIpcHandlers(): void {
     const token = await getStoredToken();
     if (!token) throw new Error("No valid session");
     return apiRequest<{ data: ServiceHistoryEntry[] }>(`/api/v1/service-accounts/${Number(id)}/history`, { method: "GET", token });
+  });
+
+  ipcMain.handle("permissions:get-matrix", async (): Promise<{ data: PermissionMatrix }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: PermissionMatrix }>("/api/v1/permissions", { method: "GET", token });
+  });
+
+  ipcMain.handle("permissions:update-role", async (_event, payload: unknown): Promise<{ data: { roleId: number; permissions: string[] } }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const { roleId, permissions } = payload as { roleId: number; permissions: string[] };
+    if (!Array.isArray(permissions) || permissions.some((p) => typeof p !== "string")) throw new Error("Invalid permissions");
+    return apiRequest<{ data: { roleId: number; permissions: string[] } }>(`/api/v1/roles/${Number(roleId)}/permissions`, {
+      method: "PUT",
+      token,
+      body: { permissions },
+    });
   });
 
   ipcMain.handle("search:query", async (_event, q: unknown): Promise<{ data: SearchHit[] }> => {

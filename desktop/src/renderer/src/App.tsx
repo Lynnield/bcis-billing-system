@@ -32,6 +32,7 @@ import { InvoiceDetail } from "@/components/invoices/InvoiceDetail";
 import { ServiceAccountDetail } from "@/components/service-accounts/ServiceAccountDetail";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { AuditLogPage } from "@/components/audit/AuditLogPage";
+import { PermissionsPage } from "@/components/users/PermissionsPage";
 import { getBillingPeriods } from "@/lib/billing-period-api";
 import { ToastProvider } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
@@ -157,6 +158,7 @@ function AppContent() {
           <Route path="backup" element={<BackupPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
+          <Route path="permissions" element={<PermissionsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

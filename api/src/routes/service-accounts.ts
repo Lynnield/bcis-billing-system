@@ -14,24 +14,13 @@ import {
   suspensionRecords,
   users,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { hasPermission, requirePermission } from "../lib/permissions";
 import { formatCents } from "../lib/money";
 import { getInvoiceBalances } from "../lib/receivables";
 
 const STATUS_VALUES = ["active", "inactive", "suspended", "disconnected", "pending_installation"] as const;
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
-const ASSIGN_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -158,7 +147,7 @@ async function getServiceAccountDetail(id: number) {
 }
 
 export default async function serviceAccountRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/service-accounts", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-accounts", { preHandler: [authenticate, requirePermission("service_account.view")] }, async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { page, pageSize, subscriberId, serviceId, planId, serviceNumber, collectionAreaId, collectorId, status } = parsed.data;
@@ -206,7 +195,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     });
   });
 
-  app.get("/api/v1/service-accounts/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-accounts/:id", { preHandler: [authenticate, requirePermission("service_account.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const detail = await getServiceAccountDetail(params.data.id);
@@ -214,7 +203,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     return reply.send({ data: detail });
   });
 
-  app.post("/api/v1/service-accounts", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/service-accounts", { preHandler: [authenticate, requirePermission("service_account.manage")] }, async (request, reply) => {
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid service account data", issues: parsed.error.issues });
 
@@ -264,7 +253,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     }
   });
 
-  app.patch("/api/v1/service-accounts/:id", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/service-accounts/:id", { preHandler: [authenticate, requirePermission("service_account.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const parsed = updateSchema.safeParse(request.body);
@@ -308,7 +297,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     return reply.send({ data: detail });
   });
 
-  app.patch("/api/v1/service-accounts/:id/status", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/service-accounts/:id/status", { preHandler: [authenticate, requirePermission("service_account.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const parsed = statusSchema.safeParse(request.body);
@@ -334,7 +323,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
 
   // Service history (spec 3.10): every recorded change to this account —
   // creation, plan/rate/status changes, suspensions and reconnections.
-  app.get("/api/v1/service-accounts/:id/history", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-accounts/:id/history", { preHandler: [authenticate, requirePermission("service_account.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const rows = await db
@@ -346,7 +335,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     return reply.send({ data: rows });
   });
 
-  app.patch("/api/v1/service-accounts/:id/collection-assignment", { preHandler: [authenticate, requireRoles(...ASSIGN_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/service-accounts/:id/collection-assignment", { preHandler: [authenticate, requirePermission("collection.manage_routes")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const parsed = assignmentSchema.safeParse(request.body);
@@ -383,7 +372,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     return reply.send({ data: detail });
   });
 
-  app.patch("/api/v1/service-accounts/:id/suspend", { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR)] }, async (request, reply) => {
+  app.patch("/api/v1/service-accounts/:id/suspend", { preHandler: [authenticate, requirePermission("service.suspend")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const body = z.object({ reason: z.string().trim().max(1000).optional(), notes: z.string().trim().max(2000).optional() }).strict().safeParse(request.body ?? {});
@@ -431,7 +420,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
   // raised (fee, technician, request date); the account becomes active only
   // when the reconnection is completed. completeNow does both in one step for
   // an office-side reconnection that needs no field visit.
-  app.patch("/api/v1/service-accounts/:id/reconnect", { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR)] }, async (request, reply) => {
+  app.patch("/api/v1/service-accounts/:id/reconnect", { preHandler: [authenticate, requirePermission("service.reconnect")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const body = z.object({
@@ -447,9 +436,9 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     if (!body.success) return reply.code(400).send({ message: "Invalid request body", issues: body.error.issues });
     const b = body.data;
 
-    const canOverride = request.currentUser!.roles.some((r) => r === ROLE_NAMES.OWNER || r === ROLE_NAMES.ADMINISTRATOR);
+    const canOverride = hasPermission(request, "service.reconnect_override");
     if (b.overrideUnpaid && (!canOverride || !b.reason)) {
-      return reply.code(403).send({ message: "Only the Owner or an Administrator can override the payment requirement, and a reason is required" });
+      return reply.code(403).send({ message: "Overriding the payment requirement needs the service.reconnect_override permission and a reason" });
     }
 
     if (b.technicianUserId !== undefined) {
@@ -537,7 +526,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
   // Technician (or office) marks the field reconnection done.
   app.post(
     "/api/v1/service-accounts/:id/reconnections/:reconnectionId/complete",
-    { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR, ROLE_NAMES.TECHNICIAN)] },
+    { preHandler: [authenticate, requirePermission("service.reconnect_complete")] },
     async (request, reply) => {
       const params = z.object({ id: z.coerce.number().int().positive(), reconnectionId: z.coerce.number().int().positive() }).safeParse(request.params);
       if (!params.success) return reply.code(400).send({ message: "Invalid IDs" });
@@ -587,7 +576,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     },
   );
 
-  app.get("/api/v1/service-accounts/:id/suspension-history", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-accounts/:id/suspension-history", { preHandler: [authenticate, requirePermission("service_account.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const rows = await db
@@ -598,7 +587,7 @@ export default async function serviceAccountRoutes(app: FastifyInstance): Promis
     return reply.send({ data: rows });
   });
 
-  app.get("/api/v1/service-accounts/:id/reconnection-history", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-accounts/:id/reconnection-history", { preHandler: [authenticate, requirePermission("service_account.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
     const rows = await db

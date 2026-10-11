@@ -3,21 +3,11 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { collectors, collectionAreas } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
 const STATUS_VALUES = ["active", "inactive"] as const;
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const MANAGE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -57,7 +47,7 @@ function isConflict(err: unknown): boolean {
 }
 
 export default async function collectionRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/collection-areas", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collection-areas", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const query = z.object({ status: z.enum(STATUS_VALUES).optional() }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const rows = query.data.status
@@ -66,7 +56,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: rows });
   });
 
-  app.get("/api/v1/collection-areas/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collection-areas/:id", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid collection area ID" });
     const [row] = await db.select().from(collectionAreas).where(eq(collectionAreas.id, params.data.id)).limit(1);
@@ -74,7 +64,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: row });
   });
 
-  app.post("/api/v1/collection-areas", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-areas", { preHandler: [authenticate, requirePermission("collection.manage_routes")] }, async (request, reply) => {
     const parsed = createAreaSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid collection area data", issues: parsed.error.issues });
     try {
@@ -86,7 +76,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     }
   });
 
-  app.patch("/api/v1/collection-areas/:id", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/collection-areas/:id", { preHandler: [authenticate, requirePermission("collection.manage_routes")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid collection area ID" });
     const parsed = updateAreaSchema.safeParse(request.body);
@@ -102,7 +92,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     }
   });
 
-  app.get("/api/v1/collectors", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collectors", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const query = z.object({ status: z.enum(STATUS_VALUES).optional() }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const rows = query.data.status
@@ -111,7 +101,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: rows });
   });
 
-  app.get("/api/v1/collectors/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collectors/:id", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid collector ID" });
     const [row] = await db.select().from(collectors).where(eq(collectors.id, params.data.id)).limit(1);
@@ -119,7 +109,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: row });
   });
 
-  app.post("/api/v1/collectors", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collectors", { preHandler: [authenticate, requirePermission("collection.manage_routes")] }, async (request, reply) => {
     const parsed = createCollectorSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid collector data", issues: parsed.error.issues });
     if (parsed.data.collectionAreaId !== undefined) {
@@ -130,7 +120,7 @@ export default async function collectionRoutes(app: FastifyInstance): Promise<vo
     return reply.code(201).send({ data: row });
   });
 
-  app.patch("/api/v1/collectors/:id", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/collectors/:id", { preHandler: [authenticate, requirePermission("collection.manage_routes")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid collector ID" });
     const parsed = updateCollectorSchema.safeParse(request.body);

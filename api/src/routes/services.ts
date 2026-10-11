@@ -3,22 +3,12 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { auditLogs, services, servicePlans } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
 const STATUS_VALUES = ["active", "inactive"] as const;
 const SERVICE_TYPES = ["internet", "cable", "combo"] as const;
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 const serviceIdParamSchema = z.object({ serviceId: z.coerce.number().int().positive() });
@@ -80,7 +70,7 @@ function isConflict(err: unknown): boolean {
 }
 
 export default async function serviceRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/services", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/services", { preHandler: [authenticate, requirePermission("plan.view")] }, async (request, reply) => {
     const query = z.object({ status: z.enum(STATUS_VALUES).optional() }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const rows = query.data.status
@@ -89,7 +79,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     return reply.send({ data: rows });
   });
 
-  app.get("/api/v1/services/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/services/:id", { preHandler: [authenticate, requirePermission("plan.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service ID" });
     const [row] = await db.select().from(services).where(eq(services.id, params.data.id)).limit(1);
@@ -97,7 +87,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     return reply.send({ data: row });
   });
 
-  app.post("/api/v1/services", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/services", { preHandler: [authenticate, requirePermission("plan.manage")] }, async (request, reply) => {
     const parsed = createServiceSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid service data", issues: parsed.error.issues });
     try {
@@ -109,7 +99,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.patch("/api/v1/services/:id", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/services/:id", { preHandler: [authenticate, requirePermission("plan.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service ID" });
     const parsed = updateServiceSchema.safeParse(request.body);
@@ -125,7 +115,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.get("/api/v1/services/:serviceId/plans", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/services/:serviceId/plans", { preHandler: [authenticate, requirePermission("plan.view")] }, async (request, reply) => {
     const params = serviceIdParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service ID" });
     const query = z.object({ status: z.enum(STATUS_VALUES).optional() }).safeParse(request.query);
@@ -141,7 +131,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     return reply.send({ data: rows });
   });
 
-  app.get("/api/v1/service-plans/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/service-plans/:id", { preHandler: [authenticate, requirePermission("plan.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid plan ID" });
     const [row] = await db.select().from(servicePlans).where(eq(servicePlans.id, params.data.id)).limit(1);
@@ -149,7 +139,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     return reply.send({ data: row });
   });
 
-  app.post("/api/v1/services/:serviceId/plans", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/services/:serviceId/plans", { preHandler: [authenticate, requirePermission("plan.manage")] }, async (request, reply) => {
     const params = serviceIdParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service ID" });
     const parsed = createPlanSchema.safeParse(request.body);
@@ -172,7 +162,7 @@ export default async function serviceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.patch("/api/v1/service-plans/:id", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/service-plans/:id", { preHandler: [authenticate, requirePermission("plan.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid plan ID" });
     const parsed = updatePlanSchema.safeParse(request.body);

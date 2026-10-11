@@ -4,8 +4,8 @@ import { stat } from "node:fs/promises";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { auditLogs, backupHistory } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { env } from "../config/env";
 import {
   backupFilePath,
@@ -20,10 +20,6 @@ import {
   verifyAttachments,
 } from "../lib/backup";
 
-// Only the Owner role has backup/restore per the role matrix (3.1): this is
-// the single most destructive capability in the system, so it is not shared
-// with Administrator the way most other configuration is.
-const BACKUP_ROLES = [ROLE_NAMES.OWNER];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 const restoreSchema = z.object({ confirm: z.literal(true) }).strict();
@@ -32,12 +28,12 @@ class BackupNotFoundError extends Error {}
 class BackupStateError extends Error {}
 
 export default async function backupRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/backup", { preHandler: [authenticate, requireRoles(...BACKUP_ROLES)] }, async (_request, reply) => {
+  app.get("/api/v1/backup", { preHandler: [authenticate, requirePermission("backup.manage")] }, async (_request, reply) => {
     const data = await db.select().from(backupHistory).orderBy(desc(backupHistory.id));
     return reply.send({ data });
   });
 
-  app.post("/api/v1/backup", { preHandler: [authenticate, requireRoles(...BACKUP_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/backup", { preHandler: [authenticate, requirePermission("backup.manage")] }, async (request, reply) => {
     const dir = await ensureBackupDir();
     const conn = parseConnectionParams(env.DATABASE_URL);
     const filename = `bcis-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.dump`;
@@ -75,7 +71,7 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
-  app.post("/api/v1/backup/:id/verify", { preHandler: [authenticate, requireRoles(...BACKUP_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/backup/:id/verify", { preHandler: [authenticate, requirePermission("backup.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid backup ID" });
 
@@ -119,7 +115,7 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
-  app.post("/api/v1/backup/:id/restore", { preHandler: [authenticate, requireRoles(...BACKUP_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/backup/:id/restore", { preHandler: [authenticate, requirePermission("backup.restore")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid backup ID" });
     const parsed = restoreSchema.safeParse(request.body);

@@ -128,6 +128,25 @@ export const userRoles = pgTable("user_roles", {
   index("user_roles_role_id_idx").on(t.roleId),
 ]);
 
+// Granular permissions (spec 4.4 / 5). The catalog is defined in
+// api/src/lib/permissions.ts and synced on start-up; grants are data.
+export const permissions = pgTable("permissions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  code: varchar("code", { length: 100 }).notNull(),
+  groupName: varchar("group_name", { length: 100 }).notNull(),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (t) => [uniqueIndex("permissions_code_unique").on(t.code)]);
+
+export const rolePermissions = pgTable("role_permissions", {
+  roleId: bigint("role_id", { mode: "number" }).notNull().references(() => roles.id, { onDelete: "cascade" }),
+  permissionId: bigint("permission_id", { mode: "number" }).notNull().references(() => permissions.id, { onDelete: "cascade" }),
+  grantedAt: timestamp("granted_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (t) => [
+  unique("role_permissions_pkey").on(t.roleId, t.permissionId),
+  index("role_permissions_permission_id_idx").on(t.permissionId),
+]);
+
 // ---------------------------------------------------------------------------
 // Subscribers
 // ---------------------------------------------------------------------------

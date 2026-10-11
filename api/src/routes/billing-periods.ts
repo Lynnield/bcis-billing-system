@@ -4,19 +4,9 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLogs, billingPeriods, invoices, serviceAccounts } from "../db/schema";
 import { BillingConflictError, InvoiceInputError, createInvoiceTx } from "./invoices";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -59,7 +49,7 @@ function isConflict(err: unknown): boolean {
 }
 
 export default async function billingPeriodRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/billing-periods", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/billing-periods", { preHandler: [authenticate, requirePermission("billing.view")] }, async (request, reply) => {
     const query = z.object({
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -83,7 +73,7 @@ export default async function billingPeriodRoutes(app: FastifyInstance): Promise
     });
   });
 
-  app.get("/api/v1/billing-periods/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/billing-periods/:id", { preHandler: [authenticate, requirePermission("billing.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid billing period ID" });
     const [row] = await db.select().from(billingPeriods).where(eq(billingPeriods.id, params.data.id)).limit(1);
@@ -91,7 +81,7 @@ export default async function billingPeriodRoutes(app: FastifyInstance): Promise
     return reply.send({ data: row });
   });
 
-  app.post("/api/v1/billing-periods", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/billing-periods", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid billing period data", issues: parsed.error.issues });
 
@@ -115,7 +105,7 @@ export default async function billingPeriodRoutes(app: FastifyInstance): Promise
     }
   });
 
-  app.patch("/api/v1/billing-periods/:id", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/billing-periods/:id", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid billing period ID" });
     const parsed = updateSchema.safeParse(request.body);
@@ -160,7 +150,7 @@ export default async function billingPeriodRoutes(app: FastifyInstance): Promise
   // yet been billed for this period. Each account is billed in its own
   // transaction, so running this twice (or from two PCs at once) never
   // produces a duplicate — the second run simply finds nothing left to bill.
-  app.post("/api/v1/billing-periods/:id/generate", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/billing-periods/:id/generate", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid billing period ID" });
     const parsed = generateSchema.safeParse(request.body ?? {});

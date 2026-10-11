@@ -3,8 +3,8 @@ import { z } from "zod";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { subscribers, subscriberStatusHistory, users } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 
 const statusValues = ["active", "inactive", "suspended", "disconnected", "pending"] as const;
 
@@ -57,17 +57,7 @@ const statusChangeSchema = z.object({
   reason: z.string().trim().max(1000).optional(),
 });
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
 
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
 
 function isUniqueViolation(err: unknown): boolean {
   let current: unknown = err;
@@ -101,7 +91,7 @@ const subscriberColumns = {
 export default async function subscriberRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     "/api/v1/subscribers",
-    { preHandler: [authenticate, requireRoles(...READ_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.view")] },
     async (request, reply) => {
       const parsed = listQuerySchema.safeParse(request.query);
       if (!parsed.success) {
@@ -150,7 +140,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.get(
     "/api/v1/subscribers/:id",
-    { preHandler: [authenticate, requireRoles(...READ_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.view")] },
     async (request, reply) => {
       const params = idParamSchema.safeParse(request.params);
       if (!params.success) {
@@ -170,7 +160,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.post(
     "/api/v1/subscribers",
-    { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.manage")] },
     async (request, reply) => {
       const parsed = createSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -207,7 +197,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.patch(
     "/api/v1/subscribers/:id",
-    { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.manage")] },
     async (request, reply) => {
       const params = idParamSchema.safeParse(request.params);
       if (!params.success) {
@@ -236,7 +226,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.delete(
     "/api/v1/subscribers/:id",
-    { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.manage")] },
     async () => {
       return {
         message:
@@ -247,7 +237,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.patch(
     "/api/v1/subscribers/:id/status",
-    { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.manage")] },
     async (request, reply) => {
       const params = idParamSchema.safeParse(request.params);
       if (!params.success) {
@@ -307,7 +297,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
 
   app.get(
     "/api/v1/subscribers/:id/status-history",
-    { preHandler: [authenticate, requireRoles(...READ_ROLES)] },
+    { preHandler: [authenticate, requirePermission("subscriber.view")] },
     async (request, reply) => {
       const params = idParamSchema.safeParse(request.params);
       if (!params.success) {

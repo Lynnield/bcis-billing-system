@@ -70,6 +70,8 @@ export interface AuthUser {
   email: string;
   fullName: string;
   roles: string[];
+  /** Permission codes from the server (spec 4.4); absent on stale sessions. */
+  permissions?: string[];
 }
 
 export interface LoginRequest {

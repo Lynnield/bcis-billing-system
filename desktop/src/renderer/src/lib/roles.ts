@@ -12,6 +12,8 @@ export interface NavItem {
   iconName?: string;
   href?: string;
   roles?: string[];
+  /** When the session carries permissions, this decides visibility instead of roles. */
+  permission?: string;
   children?: NavItem[];
 }
 
@@ -35,10 +37,10 @@ export const NAV_ITEMS: NavItem[] = [
     iconName: "Users",
     roles: [OWNER, ADMIN, TECHNICIAN, CASHIER],
     children: [
-      { key: "subscribers", label: "All Subscribers", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
+      { key: "subscribers", label: "All Subscribers", permission: "subscriber.view", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
       // api/src/routes/subscribers.ts WRITE_ROLES
-      { key: "subscribers/new", label: "New Subscriber", roles: [OWNER, ADMIN] },
-      { key: "service-accounts", label: "Service Accounts", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
+      { key: "subscribers/new", label: "New Subscriber", permission: "subscriber.manage", roles: [OWNER, ADMIN] },
+      { key: "service-accounts", label: "Service Accounts", permission: "service_account.view", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
     ],
   },
   {
@@ -47,10 +49,10 @@ export const NAV_ITEMS: NavItem[] = [
     iconName: "FileText",
     roles: [OWNER, ADMIN, AUDITOR, CASHIER],
     children: [
-      { key: "billing/current", label: "Current Billing", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
+      { key: "billing/current", label: "Current Billing", permission: "billing.view", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
       // api/src/routes/billing-periods.ts WRITE_ROLES
-      { key: "billing-periods", label: "Generate Billing", roles: [OWNER, ADMIN] },
-      { key: "billing-invoices", label: "Invoices", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
+      { key: "billing-periods", label: "Generate Billing", permission: "billing.generate", roles: [OWNER, ADMIN] },
+      { key: "billing-invoices", label: "Invoices", permission: "billing.view", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
     ],
   },
   {
@@ -60,10 +62,10 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR],
     children: [
       // api/src/routes/payments.ts POST_ROLES
-      { key: "receive-payment", label: "Receive Payment", roles: [OWNER, ADMIN, CASHIER] },
-      { key: "payments", label: "Payment History", roles: [OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR] },
+      { key: "receive-payment", label: "Receive Payment", permission: "payment.create", roles: [OWNER, ADMIN, CASHIER] },
+      { key: "payments", label: "Payment History", permission: "payment.view", roles: [OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR] },
       // api/src/routes/payments.ts VERIFY_ROLES
-      { key: "gcash-verification", label: "GCash Verification", roles: [OWNER, ADMIN, AUDITOR] },
+      { key: "gcash-verification", label: "GCash Verification", permission: "payment.verify_gcash", roles: [OWNER, ADMIN, AUDITOR] },
     ],
   },
   {
@@ -72,12 +74,12 @@ export const NAV_ITEMS: NavItem[] = [
     iconName: "Truck",
     roles: [OWNER, ADMIN, SUPERVISOR, CASHIER, AUDITOR],
     children: [
-      { key: "collections/collectors", label: "Collectors", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
+      { key: "collections/collectors", label: "Collectors", permission: "collection.view", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
       // api/src/routes/collections.ts MANAGE_ROLES
-      { key: "collection-areas", label: "Areas & Routes", roles: [OWNER, ADMIN, SUPERVISOR] },
-      { key: "collections", label: "Collection Batches", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
+      { key: "collection-areas", label: "Areas & Routes", permission: "collection.manage_routes", roles: [OWNER, ADMIN, SUPERVISOR] },
+      { key: "collections", label: "Collection Batches", permission: "collection.view", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
       // api/src/routes/collection-batches.ts REMIT_ROLES
-      { key: "collections/remittance", label: "Remittance", roles: [OWNER, ADMIN, SUPERVISOR, AUDITOR] },
+      { key: "collections/remittance", label: "Remittance", permission: "collection.reconcile", roles: [OWNER, ADMIN, SUPERVISOR, AUDITOR] },
     ],
   },
   {
@@ -86,15 +88,15 @@ export const NAV_ITEMS: NavItem[] = [
     iconName: "BarChart3",
     roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR],
     children: [
-      { key: "receivables/outstanding", label: "Outstanding", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
-      { key: "receivables/overdue", label: "Overdue", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
-      { key: "receivables/aging", label: "Aging", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
-      { key: "receivables/suspension", label: "Suspension Candidates", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR] },
+      { key: "receivables/outstanding", label: "Outstanding", permission: "receivable.view", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/overdue", label: "Overdue", permission: "receivable.view", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/aging", label: "Aging", permission: "receivable.view", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/suspension", label: "Suspension Candidates", permission: "receivable.view", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR] },
     ],
   },
-  { key: "services", label: "Services", iconName: "Server", roles: [OWNER, ADMIN, TECHNICIAN] },
+  { key: "services", label: "Services", permission: "plan.view", iconName: "Server", roles: [OWNER, ADMIN, TECHNICIAN] },
   // Spec 3.1: Read-only Viewer gets dashboards and reports.
-  { key: "reports", label: "Reports", iconName: "Receipt", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR, VIEWER] },
+  { key: "reports", label: "Reports", permission: "report.management", iconName: "Receipt", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR, VIEWER] },
   {
     key: "administration-group",
     label: "Administration",
@@ -102,13 +104,14 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [OWNER, ADMIN, SUPERVISOR, AUDITOR],
     children: [
       // api/src/routes/users.ts MANAGE_ROLES — Owner only.
-      { key: "user-management", label: "Users", roles: [OWNER] },
+      { key: "user-management", label: "Users", permission: "user.manage", roles: [OWNER] },
+      { key: "permissions", label: "Roles & Permissions", permission: "user.view", roles: [OWNER, ADMIN] },
       // api/src/routes/settings.ts READ_ROLES
-      { key: "settings", label: "Settings", roles: [OWNER, ADMIN, SUPERVISOR] },
+      { key: "settings", label: "Settings", permission: "settings.view", roles: [OWNER, ADMIN, SUPERVISOR] },
       // api/src/routes/audit.ts READ_ROLES
-      { key: "audit-log", label: "Audit Log", roles: [OWNER, AUDITOR] },
+      { key: "audit-log", label: "Audit Log", permission: "audit.view", roles: [OWNER, AUDITOR] },
       // api/src/routes/backup.ts BACKUP_ROLES — Owner only.
-      { key: "backup", label: "Backup & Restore", roles: [OWNER] },
+      { key: "backup", label: "Backup & Restore", permission: "backup.manage", roles: [OWNER] },
     ],
   },
 ];
@@ -118,6 +121,10 @@ export const NAV_ITEMS: NavItem[] = [
  */
 export function canAccessNavItem(user: AuthUser | null, item: NavItem): boolean {
   if (!user) return false;
+  // The Owner can change which roles hold which permission, so a session
+  // that carries permissions is the better guide. Still UX only — the API
+  // enforces every permission itself.
+  if (item.permission && user.permissions) return user.permissions.includes(item.permission);
   if (!item.roles || item.roles.length === 0) return true;
   return user.roles.some((role) => item.roles!.includes(role));
 }
@@ -128,11 +135,13 @@ export function canAccessNavItem(user: AuthUser | null, item: NavItem): boolean 
 export function filterNavItems(user: AuthUser | null): NavItem[] {
   const visible: NavItem[] = [];
   for (const item of NAV_ITEMS) {
-    if (!canAccessNavItem(user, item)) continue;
     if (!item.children) {
-      visible.push(item);
+      if (canAccessNavItem(user, item)) visible.push(item);
       continue;
     }
+    // With server permissions, a group is shown whenever any entry in it is
+    // permitted; otherwise fall back to the group's role list.
+    if (!user?.permissions && !canAccessNavItem(user, item)) continue;
     // Each child carries its own role list; a group with nothing left to
     // show is dropped entirely.
     const children = item.children.filter((child) => canAccessNavItem(user, child));

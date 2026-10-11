@@ -1,13 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { hashPassword } from "../lib/password";
 import { db } from "../db";
-import { auditLogs, roles, userRoles, users } from "../db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { auditLogs, permissions, rolePermissions, roles, userRoles, users } from "../db/schema";
+import { eq, inArray, sql } from "drizzle-orm";
+import { ROLE_NAMES } from "../lib/roles";
 
-const MANAGE_ROLES = [ROLE_NAMES.OWNER];
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
 const createUserSchema = z.object({
@@ -88,7 +88,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
 
   app.get(
     "/api/v1/users",
-    { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR)] },
+    { preHandler: [authenticate, requirePermission("user.view")] },
     async () => {
       const rows = await db
         .select({
@@ -134,7 +134,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
 
   app.get(
     "/api/v1/roles",
-    { preHandler: [authenticate, requireRoles(ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR)] },
+    { preHandler: [authenticate, requirePermission("user.view")] },
     async () => {
       const all = await db.select().from(roles);
       return { roles: all };
@@ -145,7 +145,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
   // most sensitive capability in the system (it can grant any other
   // capability), so unlike most "Owner + Administrator" routes this one
   // does not extend to Administrator.
-  app.post("/api/v1/users", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/users", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
     const parsed = createUserSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid user data", issues: parsed.error.issues });
 
@@ -186,7 +186,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.patch("/api/v1/users/:id", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/users/:id", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid user ID" });
     const parsed = updateUserSchema.safeParse(request.body);
@@ -222,7 +222,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.put("/api/v1/users/:id/roles", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.put("/api/v1/users/:id/roles", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid user ID" });
     const parsed = updateRolesSchema.safeParse(request.body);
@@ -257,7 +257,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/api/v1/users/:id/reset-password", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/users/:id/reset-password", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid user ID" });
     const parsed = resetPasswordSchema.safeParse(request.body);
@@ -280,7 +280,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: { userId: params.data.id } });
   });
 
-  app.post("/api/v1/users/:id/unlock", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/users/:id/unlock", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid user ID" });
     const [existing] = await db.select({ id: users.id, lockedUntil: users.lockedUntil, failedLoginCount: users.failedLoginCount }).from(users).where(eq(users.id, params.data.id)).limit(1);
@@ -295,5 +295,68 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       metadata: { old: { lockedUntil: existing.lockedUntil, failedLoginCount: existing.failedLoginCount } },
     });
     return reply.send({ data: { userId: existing.id } });
+  });
+
+  // Role/permission matrix (spec 4.4). Read with user.view; changed with
+  // user.manage. Every change is audited with the old and new grant lists.
+  app.get("/api/v1/permissions", { preHandler: [authenticate, requirePermission("user.view")] }, async (_request, reply) => {
+    const catalog = await db.select().from(permissions).orderBy(permissions.groupName, permissions.code);
+    const allRoles = await db.select({ id: roles.id, name: roles.name }).from(roles).orderBy(roles.id);
+    const grants = await db
+      .select({ roleId: rolePermissions.roleId, code: permissions.code })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId));
+    return reply.send({
+      data: {
+        permissions: catalog.map((p) => ({ code: p.code, group: p.groupName, description: p.description })),
+        roles: allRoles.map((r) => ({ ...r, permissions: grants.filter((g) => g.roleId === r.id).map((g) => g.code).sort() })),
+      },
+    });
+  });
+
+  app.put("/api/v1/roles/:id/permissions", { preHandler: [authenticate, requirePermission("user.manage")] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid role ID" });
+    const body = z.object({ permissions: z.array(z.string().max(100)).max(200) }).strict().safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: "permissions must be a list of permission codes" });
+
+    const [role] = await db.select().from(roles).where(eq(roles.id, params.data.id)).limit(1);
+    if (!role) return reply.code(404).send({ message: "Role not found" });
+
+    const wanted = [...new Set(body.data.permissions)];
+    const known = await db.select().from(permissions).where(wanted.length ? inArray(permissions.code, wanted) : sql`false`);
+    const unknown = wanted.filter((c) => !known.some((k) => k.code === c));
+    if (unknown.length) return reply.code(400).send({ message: `Unknown permission(s): ${unknown.join(", ")}` });
+    // Never let the matrix lock everyone out of administering it.
+    if (role.name === ROLE_NAMES.OWNER && !wanted.includes("user.manage")) {
+      return reply.code(409).send({ message: "The Owner role must keep user.manage" });
+    }
+
+    const oldCodes = (
+      await db
+        .select({ code: permissions.code })
+        .from(rolePermissions)
+        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+        .where(eq(rolePermissions.roleId, role.id))
+    ).map((r) => r.code).sort();
+
+    await db.transaction(async (tx) => {
+      await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, role.id));
+      if (known.length) await tx.insert(rolePermissions).values(known.map((k) => ({ roleId: role.id, permissionId: k.id })));
+      await tx.insert(auditLogs).values({
+        actorUserId: request.currentUser!.id,
+        action: "role.permissions_update",
+        entityType: "role",
+        entityId: role.id,
+        metadata: {
+          role: role.name,
+          old: oldCodes,
+          new: wanted.sort(),
+          granted: wanted.filter((c) => !oldCodes.includes(c)),
+          revoked: oldCodes.filter((c) => !wanted.includes(c)),
+        },
+      });
+    });
+    return reply.send({ data: { roleId: role.id, permissions: wanted.sort() } });
   });
 }

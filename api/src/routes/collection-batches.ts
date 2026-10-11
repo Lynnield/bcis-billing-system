@@ -11,26 +11,12 @@ import {
   payments,
   serviceAccounts,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { getInvoiceBalances } from "../lib/receivables";
 
-const VIEW_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const MANAGE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.CASHIER, ROLE_NAMES.COLLECTION_SUPERVISOR];
-const REMIT_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR, ROLE_NAMES.ACCOUNTING_AUDITOR];
 
-// Closing a reconciled batch is the final sign-off, kept to supervisors and
-// above (spec 3.8: authorized confirmation before closing).
-const CLOSE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.COLLECTION_SUPERVISOR];
 
 const BATCH_STATUSES = ["open", "in_progress", "submitted", "remitted", "reconciled", "closed"] as const;
 // Statuses in which collections may still be recorded against the batch.
@@ -166,7 +152,7 @@ class PaymentAlreadyAssignedError extends Error {}
 class DifferenceNotAcknowledgedError extends Error {}
 
 export default async function collectionBatchRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/collection-batches", { preHandler: [authenticate, requireRoles(...VIEW_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collection-batches", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const query = z.object({
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -198,7 +184,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     });
   });
 
-  app.get("/api/v1/collection-batches/:id", { preHandler: [authenticate, requireRoles(...VIEW_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/collection-batches/:id", { preHandler: [authenticate, requirePermission("collection.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const detail = await getBatchDetail(params.data.id);
@@ -206,7 +192,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     return reply.send({ data: detail });
   });
 
-  app.post("/api/v1/collection-batches", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches", { preHandler: [authenticate, requirePermission("collection.manage_batches")] }, async (request, reply) => {
     const parsed = createBatchSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid batch data", issues: parsed.error.issues });
 
@@ -267,7 +253,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     return reply.code(201).send({ data: batch });
   });
 
-  app.patch("/api/v1/collection-batches/:id", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.patch("/api/v1/collection-batches/:id", { preHandler: [authenticate, requirePermission("collection.manage_batches")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const parsed = patchBatchSchema.safeParse(request.body);
@@ -286,7 +272,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     return reply.send({ data: updated });
   });
 
-  app.post("/api/v1/collection-batches/:id/payments", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches/:id/payments", { preHandler: [authenticate, requirePermission("collection.manage_batches")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const parsed = addPaymentSchema.safeParse(request.body);
@@ -357,7 +343,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.post("/api/v1/collection-batches/:id/remit", { preHandler: [authenticate, requireRoles(...REMIT_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches/:id/remit", { preHandler: [authenticate, requirePermission("collection.reconcile")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const parsed = remitSchema.safeParse(request.body);
@@ -426,7 +412,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.post("/api/v1/collection-batches/:id/submit", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches/:id/submit", { preHandler: [authenticate, requirePermission("collection.manage_batches")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
 
@@ -460,7 +446,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.post("/api/v1/collection-batches/:id/reconcile", { preHandler: [authenticate, requireRoles(...REMIT_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches/:id/reconcile", { preHandler: [authenticate, requirePermission("collection.reconcile")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const body = reconcileSchema.safeParse(request.body ?? {});
@@ -525,7 +511,7 @@ export default async function collectionBatchRoutes(app: FastifyInstance): Promi
     }
   });
 
-  app.post("/api/v1/collection-batches/:id/close", { preHandler: [authenticate, requireRoles(...CLOSE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/collection-batches/:id/close", { preHandler: [authenticate, requirePermission("collection.close")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid batch ID" });
     const body = closeSchema.safeParse(request.body ?? {});

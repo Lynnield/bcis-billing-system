@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -17,24 +17,16 @@ import {
   subscribers,
   users,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { hasPermission, requirePermission, type PermissionCode } from "../lib/permissions";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { getInvoiceBalances } from "../lib/receivables";
 import { buildPdfBuffer, buildXlsxBuffer, exportContentType, exportFilename, type ReportColumn } from "../lib/report-export";
-import { AUDIT_READ_ROLES } from "./audit";
 
 // Spec 3.11 management reports. Each report is one definition that produces
 // a table; the same definition backs the JSON view and the PDF/XLSX export,
 // so what is shown on screen and what is exported can never disagree.
 
-const MANAGEMENT_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
 
 // Exports are complete up to this many rows; beyond it the subtitle says so.
 const MAX_ROWS = 50_000;
@@ -61,7 +53,7 @@ interface ReportResult {
 interface ReportDef {
   title: string;
   description: string;
-  roles: readonly string[];
+  permission: PermissionCode;
   params: Array<keyof Params>;
   run: (p: Params) => Promise<ReportResult>;
 }
@@ -88,7 +80,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "collections-summary": {
     title: "Collection Summary",
     description: "Posted collections per day, week, month or year, split by payment method.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["dateFrom", "dateTo", "period"],
     async run(p) {
       const period = p.period ?? "month";
@@ -148,7 +140,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "billing-vs-collection": {
     title: "Billing vs Collection",
     description: "Amount billed against amount collected per month, with the collection rate.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["dateFrom", "dateTo"],
     async run(p) {
       const invMonth = sql<string>`to_char(${invoices.issueDate}, 'YYYY-MM')`;
@@ -201,7 +193,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "revenue-by": {
     title: "Revenue by Plan / Service / Area",
     description: "Billed and collected amounts grouped by plan, service type or collection area.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["dateFrom", "dateTo", "groupBy"],
     async run(p) {
       const groupBy = p.groupBy ?? "plan";
@@ -268,7 +260,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "subscriber-master": {
     title: "Subscriber Master List",
     description: "Every subscriber and service account with plan, area, collector, status and balance.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["collectionAreaId", "collectorId"],
     async run(p) {
       const conditions = [];
@@ -330,7 +322,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "collector-assignments": {
     title: "Collector Assignments",
     description: "Accounts assigned to each collector and the receivable on their route.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["collectionAreaId"],
     async run(p) {
       const list = await db
@@ -397,7 +389,7 @@ export const REPORTS: Record<string, ReportDef> = {
   remittances: {
     title: "Remittance Report",
     description: "Every collection batch with expected cash, remitted cash and any shortage or overage.",
-    roles: MANAGEMENT_ROLES,
+    permission: "report.management",
     params: ["dateFrom", "dateTo", "collectorId"],
     async run(p) {
       const conditions = [];
@@ -445,7 +437,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "reversals-adjustments": {
     title: "Reversals, Voids & Adjustments",
     description: "Payment reversals, voided invoices and post-issue invoice adjustments with reason and approver.",
-    roles: [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.ACCOUNTING_AUDITOR],
+    permission: "report.financial_corrections",
     params: ["dateFrom", "dateTo"],
     async run(p) {
       const from = p.dateFrom ? new Date(`${p.dateFrom}T00:00:00Z`) : undefined;
@@ -498,7 +490,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "voided-receipts": {
     title: "Voided Receipts",
     description: "Receipts belonging to reversed payments. Their numbers stay reserved and are never reused.",
-    roles: [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.ACCOUNTING_AUDITOR],
+    permission: "report.financial_corrections",
     params: ["dateFrom", "dateTo"],
     async run(p) {
       const conditions = [inArray(payments.status, ["reversed", "cancelled"]), sql`${payments.receiptNumber} is not null`];
@@ -542,7 +534,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "user-activity": {
     title: "User Activity",
     description: "Sign-ins, failed sign-ins and recorded actions per user.",
-    roles: AUDIT_READ_ROLES,
+    permission: "audit.view",
     params: ["dateFrom", "dateTo"],
     async run(p) {
       const conditions = [];
@@ -587,7 +579,7 @@ export const REPORTS: Record<string, ReportDef> = {
   "audit-trail": {
     title: "Audit Trail",
     description: "Every audited change in the period, oldest first.",
-    roles: AUDIT_READ_ROLES,
+    permission: "audit.view",
     params: ["dateFrom", "dateTo"],
     async run(p) {
       const conditions = [];
@@ -622,13 +614,13 @@ export const REPORTS: Record<string, ReportDef> = {
   },
 };
 
-async function runReport(slug: string, query: unknown, roles: string[], reply: FastifyReply): Promise<ReportResult | null> {
+async function runReport(slug: string, query: unknown, request: FastifyRequest, reply: FastifyReply): Promise<ReportResult | null> {
   const def = REPORTS[slug];
   if (!def) {
     reply.code(404).send({ message: "Unknown report" });
     return null;
   }
-  if (!roles.some((r) => def.roles.includes(r))) {
+  if (!hasPermission(request, def.permission)) {
     reply.code(403).send({ message: "You do not have permission to access this resource" });
     return null;
   }
@@ -644,29 +636,28 @@ async function runReport(slug: string, query: unknown, roles: string[], reply: F
   return def.run(parsed.data);
 }
 
-const ANY_REPORT_ROLE = [...new Set(Object.values(REPORTS).flatMap((d) => d.roles))];
 
 export default async function managementReportRoutes(app: FastifyInstance): Promise<void> {
   // Catalog of the reports this user may run, for the Reports screen.
-  app.get("/api/v1/reports/catalog", { preHandler: [authenticate, requireRoles(...ANY_REPORT_ROLE)] }, async (request, reply) => {
+  app.get("/api/v1/reports/catalog", { preHandler: [authenticate, requirePermission("report.management")] }, async (request, reply) => {
     const mine = Object.entries(REPORTS)
-      .filter(([, d]) => request.currentUser!.roles.some((r) => d.roles.includes(r)))
+      .filter(([, d]) => hasPermission(request, d.permission))
       .map(([slug, d]) => ({ slug, title: d.title, description: d.description, params: d.params }));
     return reply.send({ data: mine });
   });
 
-  app.get("/api/v1/reports/run/:slug", { preHandler: [authenticate, requireRoles(...ANY_REPORT_ROLE)] }, async (request, reply) => {
+  app.get("/api/v1/reports/run/:slug", { preHandler: [authenticate, requirePermission("report.management")] }, async (request, reply) => {
     const { slug } = request.params as { slug: string };
-    const result = await runReport(slug, request.query, request.currentUser!.roles, reply);
+    const result = await runReport(slug, request.query, request, reply);
     if (!result) return reply;
     return reply.send({ data: result });
   });
 
-  app.get("/api/v1/reports/run/:slug/export", { preHandler: [authenticate, requireRoles(...ANY_REPORT_ROLE)] }, async (request, reply) => {
+  app.get("/api/v1/reports/run/:slug/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const { format, ...rest } = (request.query ?? {}) as Record<string, string>;
     if (format !== "pdf" && format !== "xlsx") return reply.code(400).send({ message: "format must be pdf or xlsx" });
-    const result = await runReport(slug, rest, request.currentUser!.roles, reply);
+    const result = await runReport(slug, rest, request, reply);
     if (!result) return reply;
     const rows = result.totals ? [...result.rows, result.totals] : result.rows;
     const buffer = format === "pdf" ? await buildPdfBuffer({ ...result, rows }) : await buildXlsxBuffer({ ...result, rows });

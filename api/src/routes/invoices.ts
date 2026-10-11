@@ -14,8 +14,8 @@ import {
   services,
   subscribers,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import {
   deriveInvoiceStatus,
@@ -25,19 +25,6 @@ import {
   todayDate,
 } from "../lib/invoice-status";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
-const WRITE_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR];
-// Voids and post-issue adjustments are financial corrections, reviewed by
-// Accounting alongside payment reversals.
-const ADJUST_ROLES = [ROLE_NAMES.OWNER, ROLE_NAMES.ADMINISTRATOR, ROLE_NAMES.ACCOUNTING_AUDITOR];
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -147,7 +134,7 @@ async function getInvoiceDetail(id: number) {
 }
 
 export default async function invoiceRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/invoices", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/invoices", { preHandler: [authenticate, requirePermission("billing.view")] }, async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { page, pageSize, serviceAccountId, subscriberId, billingPeriodId, invoiceNumber, status } = parsed.data;
@@ -192,7 +179,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
-  app.get("/api/v1/invoices/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/invoices/:id", { preHandler: [authenticate, requirePermission("billing.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid invoice ID" });
     const detail = await getInvoiceDetail(params.data.id);
@@ -201,7 +188,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
   });
 
 
-  app.post("/api/v1/invoices", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/invoices", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const parsed = createInvoiceSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid invoice data", issues: parsed.error.issues });
 
@@ -219,7 +206,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/invoices/mark-overdue", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/invoices/mark-overdue", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const changed = await markOverdueInvoices();
     await db.insert(auditLogs).values({
       actorUserId: request.currentUser!.id,
@@ -231,7 +218,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
     return reply.send({ data: { changed } });
   });
 
-  app.post("/api/v1/invoices/:id/finalize", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/invoices/:id/finalize", { preHandler: [authenticate, requirePermission("billing.generate")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid invoice ID" });
 
@@ -258,7 +245,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/invoices/:id/void", { preHandler: [authenticate, requireRoles(...ADJUST_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/invoices/:id/void", { preHandler: [authenticate, requirePermission("invoice.void")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid invoice ID" });
     const parsed = voidSchema.safeParse(request.body);
@@ -297,7 +284,7 @@ export default async function invoiceRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  app.post("/api/v1/invoices/:id/adjustments", { preHandler: [authenticate, requireRoles(...ADJUST_ROLES)] }, async (request, reply) => {
+  app.post("/api/v1/invoices/:id/adjustments", { preHandler: [authenticate, requirePermission("invoice.adjust")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid invoice ID" });
     const parsed = adjustmentSchema.safeParse(request.body);

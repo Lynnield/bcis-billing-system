@@ -19,22 +19,13 @@ import {
   services,
   subscribers,
 } from "../db/schema";
-import { authenticate, requireRoles } from "../lib/auth";
-import { ROLE_NAMES } from "../lib/roles";
+import { authenticate } from "../lib/auth";
+import { requirePermission } from "../lib/permissions";
 import { AGING_BUCKETS, bucketFor, daysOverdue, getInvoiceBalances, todayDateString } from "../lib/receivables";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { buildPdfBuffer, buildXlsxBuffer, exportContentType, exportFilename, type TabularReport } from "../lib/report-export";
 import type { FastifyReply } from "fastify";
 
-const READ_ROLES = [
-  ROLE_NAMES.OWNER,
-  ROLE_NAMES.ADMINISTRATOR,
-  ROLE_NAMES.CASHIER,
-  ROLE_NAMES.COLLECTION_SUPERVISOR,
-  ROLE_NAMES.ACCOUNTING_AUDITOR,
-  ROLE_NAMES.TECHNICIAN,
-  ROLE_NAMES.READ_ONLY_VIEWER,
-];
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 const exportFormatSchema = z.object({ format: z.enum(["pdf", "xlsx"]) });
@@ -221,7 +212,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // A. COLLECTION REPORT
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/collections", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/collections", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const parsed = dateRangeQuery("").safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { dateFrom, dateTo, paymentMethod, collectorId, collectionAreaId } = parsed.data;
@@ -308,7 +299,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/collections/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/collections/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
     const parsed = dateRangeQuery("").safeParse(request.query);
@@ -368,7 +359,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // B. ACCOUNTS RECEIVABLE REPORT
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/receivables", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/receivables", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const query = request.query as { serviceAccountId?: string };
     const options: { serviceAccountId?: number } = {};
     if (query?.serviceAccountId) {
@@ -409,7 +400,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/receivables/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/receivables/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
 
@@ -451,7 +442,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // C. AR AGING REPORT
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/aging", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/aging", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const rows = await getInvoiceBalances();
     const buckets: Record<string, { count: number; amount: bigint }> = Object.fromEntries(
       AGING_BUCKETS.map((b) => [b, { count: 0, amount: 0n }]),
@@ -480,7 +471,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/aging/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/aging/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
 
@@ -514,7 +505,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // D. LEDGER
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/ledger/:serviceAccountId", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/ledger/:serviceAccountId", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const params = z.object({ serviceAccountId: z.coerce.number().int().positive() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
 
@@ -539,7 +530,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/ledger/:serviceAccountId/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/ledger/:serviceAccountId/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
     const params = z.object({ serviceAccountId: z.coerce.number().int().positive() }).safeParse(request.params);
@@ -573,7 +564,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // E. STATEMENT OF ACCOUNT
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/soa/:serviceAccountId", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/soa/:serviceAccountId", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const params = z.object({ serviceAccountId: z.coerce.number().int().positive() }).safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid service account ID" });
 
@@ -656,7 +647,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/soa/:serviceAccountId/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/soa/:serviceAccountId/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
     const params = z.object({ serviceAccountId: z.coerce.number().int().positive() }).safeParse(request.params);
@@ -707,7 +698,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // F. COLLECTOR REPORT
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/collectors", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/collectors", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
     const parsed = z.object({
       dateFrom: dateString.optional(),
       dateTo: dateString.optional(),
@@ -754,7 +745,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/collectors/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/collectors/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
     const parsed = z.object({
@@ -808,7 +799,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // ------------------------------------------------------------------
   // G. DASHBOARD SUMMARY
   // ------------------------------------------------------------------
-  app.get("/api/v1/reports/dashboard", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/dashboard", { preHandler: [authenticate, requirePermission("dashboard.view")] }, async (request, reply) => {
     const activeSubscribers = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(subscribers)
@@ -886,7 +877,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/reports/dashboard/export", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
+  app.get("/api/v1/reports/dashboard/export", { preHandler: [authenticate, requirePermission("dashboard.view")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
 

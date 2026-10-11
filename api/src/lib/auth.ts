@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { roles, userRoles, users } from "../db/schema";
+import { loadPermissionsForRoles } from "./permissions";
 
 export interface AuthUser {
   id: number;
@@ -9,6 +10,8 @@ export interface AuthUser {
   email: string;
   fullName: string;
   roles: string[];
+  /** Permission codes granted by the user's roles, resolved per request. */
+  permissions: string[];
 }
 
 export async function loadActiveUserWithRoles(userId: number): Promise<AuthUser | null> {
@@ -31,12 +34,14 @@ export async function loadActiveUserWithRoles(userId: number): Promise<AuthUser 
     return null;
   }
 
+  const roleNames = rows.map((r) => r.roleName).filter((r): r is string => r !== null);
   return {
     id: first.id,
     username: first.username,
     email: first.email,
     fullName: first.fullName,
-    roles: rows.map((r) => r.roleName).filter((r): r is string => r !== null),
+    roles: roleNames,
+    permissions: await loadPermissionsForRoles(roleNames),
   };
 }
 
@@ -63,15 +68,3 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   request.currentUser = user;
 }
 
-export function requireRoles(...allowedRoles: string[]) {
-  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const user = request.currentUser;
-    if (!user) {
-      return reply.code(401).send({ message: "Authentication required" });
-    }
-    const permitted = user.roles.some((role) => allowedRoles.includes(role));
-    if (!permitted) {
-      return reply.code(403).send({ message: "You do not have permission to access this resource" });
-    }
-  };
-}
