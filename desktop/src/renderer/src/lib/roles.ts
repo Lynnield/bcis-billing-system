@@ -15,117 +15,101 @@ export interface NavItem {
   children?: NavItem[];
 }
 
+const OWNER = "Owner / Super Admin";
+const ADMIN = "Administrator";
+const CASHIER = "Cashier";
+const SUPERVISOR = "Collection Supervisor";
+const AUDITOR = "Accounting / Auditor";
+const TECHNICIAN = "Technician";
+const VIEWER = "Read-only Viewer";
+
+// Spec 4.2 navigation tree. Every child key is a route path registered in
+// App.tsx (Sidebar renders <NavLink to={key}>). Role lists mirror the API
+// route guards in api/src/routes/*.ts — the API is the authority; these only
+// decide what is shown.
 export const NAV_ITEMS: NavItem[] = [
+  { key: "dashboard", label: "Dashboard", iconName: "LayoutDashboard", roles: [] },
   {
-    key: "dashboard",
-    label: "Dashboard",
-    iconName: "LayoutDashboard",
-    roles: [],
-  },
-  {
-    key: "subscribers",
+    key: "subscribers-group",
     label: "Subscribers",
     iconName: "Users",
-    roles: ["Owner / Super Admin", "Administrator", "Technician", "Cashier"],
-  },
-  {
-    key: "service-accounts",
-    label: "Service Accounts",
-    iconName: "CreditCard",
-    roles: ["Owner / Super Admin", "Administrator", "Technician", "Cashier"],
-  },
-  {
-    key: "services",
-    label: "Services & Plans",
-    iconName: "Server",
-    roles: ["Owner / Super Admin", "Administrator", "Technician"],
+    roles: [OWNER, ADMIN, TECHNICIAN, CASHIER],
     children: [
-      {
-        // Must match the route path in App.tsx ("services"), not an
-        // arbitrary slug — React Router has no route for "services-list"
-        // and silently falls through to the dashboard redirect otherwise.
-        key: "services",
-        label: "Services",
-        roles: ["Owner / Super Admin", "Administrator", "Technician"],
-      },
+      { key: "subscribers", label: "All Subscribers", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
+      // api/src/routes/subscribers.ts WRITE_ROLES
+      { key: "subscribers/new", label: "New Subscriber", roles: [OWNER, ADMIN] },
+      { key: "service-accounts", label: "Service Accounts", roles: [OWNER, ADMIN, TECHNICIAN, CASHIER] },
     ],
   },
   {
-    key: "billing-invoices",
-    label: "Billing & Invoices",
+    key: "billing-group",
+    label: "Billing",
     iconName: "FileText",
-    roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
+    roles: [OWNER, ADMIN, AUDITOR, CASHIER],
     children: [
-      {
-        // Must match the route path in App.tsx ("billing-invoices") — there
-        // is no route for "invoices" on its own.
-        key: "billing-invoices",
-        label: "Invoices",
-        roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
-      },
-      {
-        key: "billing-periods",
-        label: "Billing Periods",
-        roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
-      },
+      { key: "billing/current", label: "Current Billing", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
+      // api/src/routes/billing-periods.ts WRITE_ROLES
+      { key: "billing-periods", label: "Generate Billing", roles: [OWNER, ADMIN] },
+      { key: "billing-invoices", label: "Invoices", roles: [OWNER, ADMIN, AUDITOR, CASHIER] },
     ],
   },
   {
-    key: "payments",
+    key: "payments-group",
     label: "Payments",
     iconName: "DollarSign",
-    roles: ["Owner / Super Admin", "Administrator", "Cashier", "Collection Supervisor"],
+    roles: [OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR],
+    children: [
+      // api/src/routes/payments.ts POST_ROLES
+      { key: "receive-payment", label: "Receive Payment", roles: [OWNER, ADMIN, CASHIER] },
+      { key: "payments", label: "Payment History", roles: [OWNER, ADMIN, CASHIER, SUPERVISOR, AUDITOR] },
+      // api/src/routes/payments.ts VERIFY_ROLES
+      { key: "gcash-verification", label: "GCash Verification", roles: [OWNER, ADMIN, AUDITOR] },
+    ],
   },
   {
-    key: "gcash-verification",
-    label: "GCash Verification",
-    iconName: "ShieldCheck",
-    // Matches api/src/routes/payments.ts VERIFY_ROLES exactly — the backend
-    // is authoritative; this only controls whether the nav item/queue is
-    // shown, not whether an action succeeds.
-    roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor"],
-  },
-  {
-    key: "collections",
+    key: "collections-group",
     label: "Collections",
     iconName: "Truck",
-    roles: ["Owner / Super Admin", "Administrator", "Collection Supervisor", "Cashier"],
+    roles: [OWNER, ADMIN, SUPERVISOR, CASHIER, AUDITOR],
+    children: [
+      { key: "collections/collectors", label: "Collectors", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
+      // api/src/routes/collections.ts MANAGE_ROLES
+      { key: "collection-areas", label: "Areas & Routes", roles: [OWNER, ADMIN, SUPERVISOR] },
+      { key: "collections", label: "Collection Batches", roles: [OWNER, ADMIN, SUPERVISOR, CASHIER] },
+      // api/src/routes/collection-batches.ts REMIT_ROLES
+      { key: "collections/remittance", label: "Remittance", roles: [OWNER, ADMIN, SUPERVISOR, AUDITOR] },
+    ],
   },
   {
-    key: "receivables",
+    key: "receivables-group",
     label: "Receivables",
     iconName: "BarChart3",
-    roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Cashier"],
+    roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR],
+    children: [
+      { key: "receivables/outstanding", label: "Outstanding", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/overdue", label: "Overdue", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/aging", label: "Aging", roles: [OWNER, ADMIN, AUDITOR, CASHIER, SUPERVISOR] },
+      { key: "receivables/suspension", label: "Suspension Candidates", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR] },
+    ],
   },
+  { key: "services", label: "Services", iconName: "Server", roles: [OWNER, ADMIN, TECHNICIAN] },
+  // Spec 3.1: Read-only Viewer gets dashboards and reports.
+  { key: "reports", label: "Reports", iconName: "Receipt", roles: [OWNER, ADMIN, AUDITOR, SUPERVISOR, VIEWER] },
   {
-    key: "reports",
-    label: "Reports",
-    iconName: "BarChart3",
-    roles: ["Owner / Super Admin", "Administrator", "Accounting / Auditor", "Collection Supervisor"],
-  },
-  {
-    key: "collection-areas",
-    label: "Collection Areas",
-    iconName: "MapPin",
-    roles: ["Owner / Super Admin", "Administrator", "Collection Supervisor"],
-  },
-  {
-    key: "user-management",
-    label: "User Management",
+    key: "administration-group",
+    label: "Administration",
     iconName: "Settings",
-    // Matches api/src/routes/users.ts MANAGE_ROLES exactly — user
-    // administration can grant any other capability, so unlike most
-    // "Owner + Administrator" areas this one does not extend to
-    // Administrator, even though GET /users itself is readable by both.
-    roles: ["Owner / Super Admin"],
-  },
-  {
-    key: "backup",
-    label: "Backup & Restore",
-    iconName: "DatabaseBackup",
-    // Matches api/src/routes/backup.ts BACKUP_ROLES exactly — only the Owner
-    // has this capability per the spec's role matrix (3.1).
-    roles: ["Owner / Super Admin"],
+    roles: [OWNER, ADMIN, SUPERVISOR, AUDITOR],
+    children: [
+      // api/src/routes/users.ts MANAGE_ROLES — Owner only.
+      { key: "user-management", label: "Users", roles: [OWNER] },
+      // api/src/routes/settings.ts READ_ROLES
+      { key: "settings", label: "Settings", roles: [OWNER, ADMIN, SUPERVISOR] },
+      // api/src/routes/audit.ts READ_ROLES
+      { key: "audit-log", label: "Audit Log", roles: [OWNER, AUDITOR] },
+      // api/src/routes/backup.ts BACKUP_ROLES — Owner only.
+      { key: "backup", label: "Backup & Restore", roles: [OWNER] },
+    ],
   },
 ];
 
@@ -142,7 +126,24 @@ export function canAccessNavItem(user: AuthUser | null, item: NavItem): boolean 
  * Filter navigation items based on user's roles.
  */
 export function filterNavItems(user: AuthUser | null): NavItem[] {
-  return NAV_ITEMS.filter((item) => canAccessNavItem(user, item));
+  const visible: NavItem[] = [];
+  for (const item of NAV_ITEMS) {
+    if (!canAccessNavItem(user, item)) continue;
+    if (!item.children) {
+      visible.push(item);
+      continue;
+    }
+    // Each child carries its own role list; a group with nothing left to
+    // show is dropped entirely.
+    const children = item.children.filter((child) => canAccessNavItem(user, child));
+    if (children.length > 0) visible.push({ ...item, children });
+  }
+  return visible;
+}
+
+/** Every clickable route path the user can reach, in menu order. */
+export function visibleRouteKeys(user: AuthUser | null): string[] {
+  return filterNavItems(user).flatMap((item) => (item.children ? item.children.map((c) => c.key) : [item.key]));
 }
 
 /**

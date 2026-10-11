@@ -6,8 +6,10 @@ import { RouteSheet } from "./RouteSheet";
 
 type View = { kind: "batches" } | { kind: "collectors" } | { kind: "batch-detail"; batchId: number } | { kind: "route-sheet"; collectorId: number };
 
-export function CollectionsPage() {
-  const [view, setView] = React.useState<View>({ kind: "batches" });
+export function CollectionsPage({ initialView = "batches" }: { initialView?: "batches" | "collectors" | "remittance" } = {}) {
+  const [view, setView] = React.useState<View>({ kind: initialView === "collectors" ? "collectors" : "batches" });
+  // The Remittance entry opens batches waiting for the collector's cash.
+  const batchStatus = initialView === "remittance" ? "submitted" : undefined;
 
   if (view.kind === "batch-detail") {
     return <CollectionBatchDetail batchId={view.batchId} onBack={() => setView({ kind: "batches" })} />;
@@ -43,7 +45,7 @@ export function CollectionsPage() {
       </div>
 
       {view.kind === "batches" ? (
-        <CollectionBatchList onViewBatch={(batchId) => setView({ kind: "batch-detail", batchId })} />
+        <CollectionBatchList initialStatus={batchStatus} onViewBatch={(batchId) => setView({ kind: "batch-detail", batchId })} />
       ) : (
         <CollectorList onViewRouteSheet={(collectorId) => setView({ kind: "route-sheet", collectorId })} />
       )}

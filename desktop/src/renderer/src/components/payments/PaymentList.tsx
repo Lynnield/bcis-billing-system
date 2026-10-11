@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -9,7 +9,7 @@ import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import { getPayments } from "@/lib/payment-api";
 import { getServiceAccounts } from "@/lib/service-account-api";
-import { PaymentForm } from "./PaymentForm";
+import { useNavigate } from "react-router-dom";
 import { PaymentDetail } from "./PaymentDetail";
 import type { PaymentMethod, PaymentStatus } from "@/shared/types";
 import { Plus, Eye, Loader2 } from "lucide-react";
@@ -42,7 +42,6 @@ const methodLabel: Record<PaymentMethod, string> = {
 };
 
 export function PaymentList() {
-  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { } = useToast();
 
@@ -50,7 +49,7 @@ export function PaymentList() {
   const [pageSize, setPageSize] = React.useState(20);
   const [serviceAccountFilter, setServiceAccountFilter] = React.useState<number | "all">("all");
   const [statusFilter, setStatusFilter] = React.useState<PaymentStatus | "all">("all");
-  const [formOpen, setFormOpen] = React.useState(false);
+  const navigate = useNavigate();
   const [selectedPaymentId, setSelectedPaymentId] = React.useState<number | null>(null);
 
   const canRecordPayment = !!user && user.roles.some((r) => POST_ROLES.includes(r));
@@ -121,7 +120,7 @@ export function PaymentList() {
           <p className="text-muted-foreground">Record and review customer payments</p>
         </div>
         {canRecordPayment && (
-          <Button onClick={() => setFormOpen(true)}>
+          <Button onClick={() => navigate("/receive-payment")}>
             <Plus className="mr-2 h-4 w-4" />
             Record Payment
           </Button>
@@ -228,14 +227,6 @@ export function PaymentList() {
         />
       )}
 
-      <PaymentForm
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSuccess={() => {
-          setFormOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["payments"] });
-        }}
-      />
     </div>
   );
 }

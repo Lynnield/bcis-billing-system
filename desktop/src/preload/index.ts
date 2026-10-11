@@ -40,6 +40,13 @@ import type {
   CollectionAreaStatus,
   InvoiceListResponse,
   InvoiceDetailResponse,
+  SearchHit,
+  AuditLogQuery,
+  AuditLogListResponse,
+  AllocationPreview,
+  AccountReceivableSummary,
+  PaymentProofUploadResult,
+  PaymentProofPreview,
   InvoiceAdjustmentRequest,
   GenerateBillingRequest,
   GenerateBillingResponse,
@@ -253,6 +260,8 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("payments:verify", { id, note }),
     reject: (id: number, reason: string): Promise<RejectPaymentResponse> =>
       ipcRenderer.invoke("payments:reject", { id, reason }),
+    previewAllocation: (serviceAccountId: number, amount: string): Promise<{ data: AllocationPreview }> =>
+      ipcRenderer.invoke("payments:preview-allocation", { serviceAccountId, amount }),
   },
   backup: {
     getList: (): Promise<BackupListResponse> => ipcRenderer.invoke("backup:get-list"),
@@ -285,6 +294,8 @@ const api: BcisDesktopApi = {
       bucket?: AgingBucketKey;
     }): Promise<ReceivableInvoicesResponse> => ipcRenderer.invoke("receivables:get-invoices", params),
     getAging: (): Promise<AgingSummaryResponse> => ipcRenderer.invoke("receivables:get-aging"),
+    getAccount: (serviceAccountId: number): Promise<{ data: AccountReceivableSummary }> =>
+      ipcRenderer.invoke("receivables:get-account", serviceAccountId),
     getSuspensionCandidates: (): Promise<SuspensionCandidatesResponse> => ipcRenderer.invoke("receivables:get-suspension-candidates"),
   },
   reports: {
@@ -292,8 +303,17 @@ const api: BcisDesktopApi = {
     getLedger: (serviceAccountId: number): Promise<LedgerResponse> => ipcRenderer.invoke("reports:get-ledger", serviceAccountId),
     getSoa: (serviceAccountId: number): Promise<SoaResponse> => ipcRenderer.invoke("reports:get-soa", serviceAccountId),
   },
-  files: {
-    selectProofFile: (): Promise<string | null> => ipcRenderer.invoke("files:select-proof"),
+  audit: {
+    getList: (params: AuditLogQuery): Promise<AuditLogListResponse> => ipcRenderer.invoke("audit:get-list", params),
+    getActions: (): Promise<{ data: string[] }> => ipcRenderer.invoke("audit:get-actions"),
+  },
+  search: {
+    query: (q: string): Promise<{ data: SearchHit[] }> => ipcRenderer.invoke("search:query", q),
+  },
+  paymentProofs: {
+    upload: (): Promise<PaymentProofUploadResult | null> => ipcRenderer.invoke("payment-proofs:upload"),
+    getPreview: (id: number): Promise<PaymentProofPreview> => ipcRenderer.invoke("payment-proofs:get-preview", id),
+    open: (id: number): Promise<void> => ipcRenderer.invoke("payment-proofs:open", id),
   },
 };
 

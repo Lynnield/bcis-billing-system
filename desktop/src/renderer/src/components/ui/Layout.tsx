@@ -1,8 +1,9 @@
 import { Outlet, useLocation } from "react-router-dom";
+import { GlobalSearch } from "./GlobalSearch";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { UserAvatar } from "@/components/auth/UserAvatar";
 import { useAuth } from "@/lib/auth-context";
-import { Menu, Bell } from "lucide-react";
+import { Menu } from "lucide-react";
 import * as React from "react";
 
 export function Layout() {
@@ -37,10 +38,11 @@ export function Layout() {
             </h1>
           </div>
 
+          <div className="mx-4 flex flex-1 justify-center">
+            <GlobalSearch />
+          </div>
+
           <div className="flex items-center gap-3">
-            <button className="p-2 rounded-md hover:bg-accent transition-colors" aria-label="Notifications">
-              <Bell className="h-5 w-5" />
-            </button>
             <UserAvatar user={user!} onLogout={logout} onLock={lock} isLoading={isLoading} />
           </div>
         </header>

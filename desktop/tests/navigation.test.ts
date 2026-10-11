@@ -2,78 +2,87 @@ import { describe, it, expect, vi } from "vitest";
 
 describe("Phase 13C — Navigation & Dashboard Tests", () => {
   describe("Role-based Navigation", () => {
-    it("filterNavItems returns all items for Owner role", async () => {
-      const { filterNavItems } = await import("@/lib/roles");
-      const user = { id: 1, username: "owner", email: "o@test.com", fullName: "Owner", roles: ["Owner / Super Admin"] };
-      const items = filterNavItems(user);
-      expect(items.length).toBe(13);
-      expect(items.map((i) => i.key)).toEqual([
+    const u = (roles: string[]) => ({ id: 1, username: "u", email: "u@test.com", fullName: "U", roles });
+
+    it("Owner sees every spec 4.2 menu group and entry", async () => {
+      const { filterNavItems, visibleRouteKeys } = await import("@/lib/roles");
+      const owner = u(["Owner / Super Admin"]);
+      expect(filterNavItems(owner).map((i) => i.label)).toEqual([
+        "Dashboard",
+        "Subscribers",
+        "Billing",
+        "Payments",
+        "Collections",
+        "Receivables",
+        "Services",
+        "Reports",
+        "Administration",
+      ]);
+      expect(visibleRouteKeys(owner)).toEqual([
         "dashboard",
         "subscribers",
+        "subscribers/new",
         "service-accounts",
-        "services",
+        "billing/current",
+        "billing-periods",
         "billing-invoices",
+        "receive-payment",
         "payments",
         "gcash-verification",
-        "collections",
-        "receivables",
-        "reports",
+        "collections/collectors",
         "collection-areas",
+        "collections",
+        "collections/remittance",
+        "receivables/outstanding",
+        "receivables/overdue",
+        "receivables/aging",
+        "receivables/suspension",
+        "services",
+        "reports",
         "user-management",
+        "settings",
+        "audit-log",
         "backup",
       ]);
     });
 
-    it("filterNavItems filters for Cashier role", async () => {
-      const { filterNavItems } = await import("@/lib/roles");
-      const user = { id: 2, username: "cashier", email: "c@test.com", fullName: "Cashier", roles: ["Cashier"] };
-      const items = filterNavItems(user);
-      // Cashier should see: dashboard, subscribers, service-accounts, billing-invoices, payments, collections, receivables
-      expect(items.map((i) => i.key)).toEqual([
-        "dashboard",
-        "subscribers",
-        "service-accounts",
-        "billing-invoices",
-        "payments",
-        "collections",
-        "receivables",
-      ]);
+    it("Cashier gets the counter workflow but not billing runs, GCash review or administration", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      const keys = visibleRouteKeys(u(["Cashier"]));
+      expect(keys).toContain("receive-payment");
+      expect(keys).toContain("billing-invoices");
+      expect(keys).toContain("receivables/outstanding");
+      for (const k of ["billing-periods", "gcash-verification", "subscribers/new", "user-management", "backup", "audit-log", "collections/remittance"]) {
+        expect(keys).not.toContain(k);
+      }
     });
 
-    it("filterNavItems filters for Collection Supervisor role", async () => {
-      const { filterNavItems } = await import("@/lib/roles");
-      const user = { id: 3, username: "collector_sup", email: "cs@test.com", fullName: "Collector Sup", roles: ["Collection Supervisor"] };
-      const items = filterNavItems(user);
-      // Collection Supervisor should see: dashboard, payments, collections, reports, collection-areas
-      expect(items.map((i) => i.key)).toEqual([
-        "dashboard",
-        "payments",
-        "collections",
-        "reports",
-        "collection-areas",
-      ]);
+    it("Collection Supervisor gets collections, remittance, areas and settings", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      const keys = visibleRouteKeys(u(["Collection Supervisor"]));
+      for (const k of ["collections", "collections/remittance", "collection-areas", "collections/collectors", "settings", "reports"]) {
+        expect(keys).toContain(k);
+      }
+      expect(keys).not.toContain("receive-payment");
     });
 
-    it("filterNavItems filters for Accounting/Auditor role", async () => {
-      const { filterNavItems } = await import("@/lib/roles");
-      const user = { id: 4, username: "auditor", email: "a@test.com", fullName: "Auditor", roles: ["Accounting / Auditor"] };
-      const items = filterNavItems(user);
-      // Accounting should see: dashboard, billing-invoices, gcash-verification, receivables, reports
-      expect(items.map((i) => i.key)).toEqual([
-        "dashboard",
-        "billing-invoices",
-        "gcash-verification",
-        "receivables",
-        "reports",
-      ]);
+    it("Accounting / Auditor gets GCash review, receivables, reports and the audit log", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      const keys = visibleRouteKeys(u(["Accounting / Auditor"]));
+      for (const k of ["gcash-verification", "receivables/aging", "reports", "audit-log", "collections/remittance"]) {
+        expect(keys).toContain(k);
+      }
+      for (const k of ["receive-payment", "user-management", "backup"]) expect(keys).not.toContain(k);
     });
 
-    it("filterNavItems filters for Read-only Viewer role", async () => {
-      const { filterNavItems } = await import("@/lib/roles");
-      const user = { id: 5, username: "viewer", email: "v@test.com", fullName: "Viewer", roles: ["Read-only Viewer"] };
-      const items = filterNavItems(user);
-      // Viewer should only see dashboard
-      expect(items.map((i) => i.key)).toEqual(["dashboard"]);
+    it("Read-only Viewer gets dashboards and reports only (spec 3.1)", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      expect(visibleRouteKeys(u(["Read-only Viewer"]))).toEqual(["dashboard", "reports"]);
+    });
+
+    it("Technician gets service information only", async () => {
+      const { visibleRouteKeys } = await import("@/lib/roles");
+      expect(visibleRouteKeys(u(["Technician"]))).toEqual(["dashboard", "subscribers", "service-accounts", "services"]);
     });
 
     it("filterNavItems returns empty array for null user", async () => {
@@ -85,7 +94,8 @@ describe("Phase 13C — Navigation & Dashboard Tests", () => {
     it("canAccessNavItem checks individual item access", async () => {
       const { canAccessNavItem, NAV_ITEMS } = await import("@/lib/roles");
       const user = { id: 1, username: "cashier", email: "c@test.com", fullName: "Cashier", roles: ["Cashier"] };
-      const userMgmtItem = NAV_ITEMS.find((i) => i.key === "user-management")!;
+      const admin = NAV_ITEMS.find((i) => i.key === "administration-group")!;
+      const userMgmtItem = admin.children!.find((c) => c.key === "user-management")!;
       const dashboardItem = NAV_ITEMS.find((i) => i.key === "dashboard")!;
       expect(canAccessNavItem(user, userMgmtItem)).toBe(false);
       expect(canAccessNavItem(user, dashboardItem)).toBe(true);

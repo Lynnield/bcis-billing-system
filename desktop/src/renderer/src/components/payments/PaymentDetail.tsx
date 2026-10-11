@@ -11,6 +11,7 @@ import { getPaymentById, reversePayment, verifyGcashPayment, rejectGcashPayment 
 import { getServiceAccountById } from "@/lib/service-account-api";
 import { getInvoiceById } from "@/lib/invoice-api";
 import { getGcashReviewPermission } from "@/lib/gcash-verification";
+import { ProofViewer } from "./ProofViewer";
 import type { PaymentMethod, PaymentStatus, GcashVerificationStatus } from "@/shared/types";
 import { ArrowLeft, Receipt, User, FileText, Undo2, Loader2, AlertTriangle, ShieldCheck, ShieldX, Printer } from "lucide-react";
 
@@ -291,10 +292,10 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
               <p className="text-sm text-muted-foreground">Posted At</p>
               <p className="font-medium">{new Date(payment.postedAt).toLocaleString()}</p>
             </div>
-            {payment.method !== "gcash" && (
+            {payment.method !== "gcash" && payment.proofs.length === 0 && payment.proofAttachmentPath && (
               <div>
-                <p className="text-sm text-muted-foreground">Proof Attachment Path</p>
-                <p className="font-medium break-all">{payment.proofAttachmentPath ?? "—"}</p>
+                <p className="text-sm text-muted-foreground">Proof Reference</p>
+                <p className="font-medium break-all">{payment.proofAttachmentPath}</p>
               </div>
             )}
           </CardContent>
@@ -360,15 +361,12 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
                 <p className="font-mono font-medium">{payment.gcash.gcashReferenceNumber}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Proof Attachment Path</p>
-                <p className="font-medium break-all">{payment.gcash.proofAttachmentPath ?? "—"}</p>
-                {payment.gcash.proofAttachmentPath && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This screen only records the file's path/reference — there is no file upload or
-                    preview available yet. Locate the actual screenshot/receipt using this path through
-                    whatever channel it was shared (e.g. the GCash app, email, or shared folder).
-                  </p>
-                )}
+                <p className="text-sm text-muted-foreground">Proof</p>
+                <p className="font-medium break-all">
+                  {payment.proofs.length > 0
+                    ? `${payment.proofs.length} file(s) attached — see Proof of Payment below`
+                    : payment.gcash.proofAttachmentPath ?? "No proof file attached"}
+                </p>
               </div>
               {payment.gcash.verificationStatus !== "pending" && (
                 <>
@@ -407,6 +405,19 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {payment.proofs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Proof of Payment</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {payment.proofs.map((proof) => (
+              <ProofViewer key={proof.id} proof={proof} />
+            ))}
           </CardContent>
         </Card>
       )}

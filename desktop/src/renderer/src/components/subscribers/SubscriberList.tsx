@@ -34,7 +34,7 @@ const statusBadgeVariant: Record<SubscriberStatus, "default" | "success" | "warn
   pending: "default",
 };
 
-export function SubscriberList() {
+export function SubscriberList({ openCreate = false }: { openCreate?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { } = useToast();
 
@@ -46,7 +46,8 @@ export function SubscriberList() {
   const [searchEmail, setSearchEmail] = React.useState("");
   const [searchContact, setSearchContact] = React.useState("");
 
-  const [formModalOpen, setFormModalOpen] = React.useState(false);
+  // "New Subscriber" in the nav opens this page with the form already up.
+  const [formModalOpen, setFormModalOpen] = React.useState(openCreate);
   const [editingSubscriber, setEditingSubscriber] = React.useState<Subscriber | undefined>(undefined);
 
   const { data, isLoading, error, refetch } = useQuery({

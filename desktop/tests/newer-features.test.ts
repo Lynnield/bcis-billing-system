@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Coverage for the desktop-side features added after the original Phase 13
 // test suite (items 4-9 of the completion plan): Collections, Receivables,
@@ -16,97 +18,59 @@ afterEach(() => {
   vi.resetModules();
 });
 
-// The route paths actually registered in App.tsx under <Route path="/">.
-// Every clickable nav key (top-level items without children, and every
-// child under a grouped item) must be one of these — Sidebar.tsx renders a
-// <NavLink to={key}>, and a key with no matching route silently falls
-// through to the "*" wildcard, which redirects to the dashboard. This is
-// exactly the bug that made "services-list" and "invoices" to silently
-// bounce back to the dashboard (desktop/src/renderer/src/lib/roles.ts
-// previously used those slugs instead of the real "services" and
-// "billing-invoices" route paths).
-const REGISTERED_ROUTE_PATHS = new Set([
-  "dashboard",
-  "subscribers",
-  "service-accounts",
-  "services",
-  "billing-invoices",
-  "billing-periods",
-  "payments",
-  "gcash-verification",
-  "collections",
-  "receivables",
-  "reports",
-  "collection-areas",
-  "user-management",
-  "backup",
-]);
+// Every clickable nav key must be a route actually registered in App.tsx —
+// Sidebar.tsx renders <NavLink to={key}>, and a key with no matching route
+// silently falls through to the "*" wildcard and lands on the dashboard
+// (the bug that once broke "services-list" and "invoices"). The set is read
+// from App.tsx itself so it cannot drift from the real routes.
+function registeredRoutePaths(): Set<string> {
+  const src = readFileSync(join(__dirname, "../src/renderer/src/App.tsx"), "utf8");
+  return new Set([...src.matchAll(/<Route path="([^"*]+)"/g)].map((m) => m[1]!).filter((p) => p !== "/"));
+}
 
 describe("Navigation route-path integrity", () => {
   it("every clickable nav key matches a route actually registered in App.tsx", async () => {
     const { NAV_ITEMS } = await import("@/lib/roles");
+    const routes = registeredRoutePaths();
+    expect(routes.size).toBeGreaterThan(10);
     for (const item of NAV_ITEMS) {
-      if (item.children && item.children.length > 0) {
-        for (const child of item.children) {
-          expect(REGISTERED_ROUTE_PATHS.has(child.key), `child nav key "${child.key}" has no matching route`).toBe(true);
-        }
-      } else {
-        expect(REGISTERED_ROUTE_PATHS.has(item.key), `nav key "${item.key}" has no matching route`).toBe(true);
+      for (const leaf of item.children ?? [item]) {
+        expect(routes.has(leaf.key), `nav key "${leaf.key}" has no matching route`).toBe(true);
       }
     }
   });
 });
 
 describe("Newer-feature navigation role filtering", () => {
+  const u = (roles: string[]) => ({ id: 1, username: "u", email: "u@test.com", fullName: "U", roles });
+
   it("Owner sees Collections, Receivables, Reports, User Management and Backup", async () => {
-    const { filterNavItems } = await import("@/lib/roles");
-    const owner = { id: 1, username: "owner", email: "o@test.com", fullName: "Owner", roles: ["Owner / Super Admin"] };
-    const keys = filterNavItems(owner).map((i) => i.key);
-    expect(keys).toContain("collections");
-    expect(keys).toContain("receivables");
-    expect(keys).toContain("reports");
-    expect(keys).toContain("user-management");
-    expect(keys).toContain("backup");
+    const { visibleRouteKeys } = await import("@/lib/roles");
+    const keys = visibleRouteKeys(u(["Owner / Super Admin"]));
+    for (const k of ["collections", "receivables/outstanding", "reports", "user-management", "backup"]) expect(keys).toContain(k);
   });
 
   it("Administrator sees Collections/Receivables/Reports but NOT User Management or Backup (Owner-only)", async () => {
-    const { filterNavItems } = await import("@/lib/roles");
-    const admin = { id: 2, username: "admin", email: "a@test.com", fullName: "Admin", roles: ["Administrator"] };
-    const keys = filterNavItems(admin).map((i) => i.key);
-    expect(keys).toContain("collections");
-    expect(keys).toContain("receivables");
-    expect(keys).toContain("reports");
+    const { visibleRouteKeys } = await import("@/lib/roles");
+    const keys = visibleRouteKeys(u(["Administrator"]));
+    for (const k of ["collections", "receivables/outstanding", "reports"]) expect(keys).toContain(k);
     expect(keys).not.toContain("user-management");
     expect(keys).not.toContain("backup");
   });
 
   it("Technician sees none of Collections/Receivables/Reports/User Management/Backup", async () => {
-    const { filterNavItems } = await import("@/lib/roles");
-    const tech = { id: 3, username: "tech", email: "t@test.com", fullName: "Tech", roles: ["Technician"] };
-    const keys = filterNavItems(tech).map((i) => i.key);
-    expect(keys).not.toContain("collections");
-    expect(keys).not.toContain("receivables");
-    expect(keys).not.toContain("reports");
-    expect(keys).not.toContain("user-management");
-    expect(keys).not.toContain("backup");
+    const { visibleRouteKeys } = await import("@/lib/roles");
+    const keys = visibleRouteKeys(u(["Technician"]));
+    for (const k of ["collections", "receivables/outstanding", "reports", "user-management", "backup"]) expect(keys).not.toContain(k);
   });
 
-  it("only Owner can access the backup nav item (matches api BACKUP_ROLES exactly)", async () => {
-    const { canAccessNavItem, NAV_ITEMS } = await import("@/lib/roles");
-    const backupItem = NAV_ITEMS.find((i) => i.key === "backup")!;
-    const owner = { id: 1, username: "o", email: "o@test.com", fullName: "O", roles: ["Owner / Super Admin"] };
-    const admin = { id: 2, username: "a", email: "a@test.com", fullName: "A", roles: ["Administrator"] };
-    expect(canAccessNavItem(owner, backupItem)).toBe(true);
-    expect(canAccessNavItem(admin, backupItem)).toBe(false);
-  });
-
-  it("only Owner can access the user-management nav item (matches api MANAGE_ROLES exactly)", async () => {
-    const { canAccessNavItem, NAV_ITEMS } = await import("@/lib/roles");
-    const userMgmtItem = NAV_ITEMS.find((i) => i.key === "user-management")!;
-    const owner = { id: 1, username: "o", email: "o@test.com", fullName: "O", roles: ["Owner / Super Admin"] };
-    const admin = { id: 2, username: "a", email: "a@test.com", fullName: "A", roles: ["Administrator"] };
-    expect(canAccessNavItem(owner, userMgmtItem)).toBe(true);
-    expect(canAccessNavItem(admin, userMgmtItem)).toBe(false);
+  it("only Owner can access the backup and user-management entries (api BACKUP_ROLES / MANAGE_ROLES)", async () => {
+    const { visibleRouteKeys } = await import("@/lib/roles");
+    for (const role of ["Administrator", "Accounting / Auditor", "Collection Supervisor", "Cashier", "Technician", "Read-only Viewer"]) {
+      const keys = visibleRouteKeys(u([role]));
+      expect(keys, role).not.toContain("backup");
+      expect(keys, role).not.toContain("user-management");
+    }
   });
 });
 

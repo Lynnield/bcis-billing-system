@@ -24,11 +24,14 @@ const STATUS_OPTIONS = [
 const WRITE_ROLES = ["Owner / Super Admin", "Administrator"];
 
 interface InvoiceListProps {
-  /** Pre-set status filter, used by the "Current Billing" nav entry. */
   initialStatus?: InvoiceStatus;
+  /** Restrict to one billing period (the "Current Billing" view). */
+  billingPeriodId?: number;
+  title?: string;
+  subtitle?: string;
 }
 
-export function InvoiceList({ initialStatus }: InvoiceListProps = {}) {
+export function InvoiceList({ initialStatus, billingPeriodId, title = "Invoices", subtitle = "Issued, draft and voided invoices" }: InvoiceListProps = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { success: showSuccess, error: showError } = useToast();
@@ -43,12 +46,13 @@ export function InvoiceList({ initialStatus }: InvoiceListProps = {}) {
   const [viewingId, setViewingId] = React.useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["invoices", page, pageSize, searchNumber, statusFilter],
+    queryKey: ["invoices", page, pageSize, searchNumber, statusFilter, billingPeriodId],
     queryFn: () =>
       getInvoices({
         page,
         pageSize,
         invoiceNumber: searchNumber || undefined,
+        billingPeriodId,
         status: statusFilter !== "all" ? (statusFilter as InvoiceStatus) : undefined,
       }),
     placeholderData: (previous) => previous,
@@ -81,8 +85,8 @@ export function InvoiceList({ initialStatus }: InvoiceListProps = {}) {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">Invoices</h2>
-          <p className="text-muted-foreground">Issued, draft and voided invoices</p>
+          <h2 className="text-2xl font-semibold">{title}</h2>
+          <p className="text-muted-foreground">{subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => overdueMutation.mutate()} disabled={!canWrite || overdueMutation.isPending}>

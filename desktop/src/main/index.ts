@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, safeStorage, dialog } from "electron";
-import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { app, BrowserWindow, ipcMain, safeStorage, dialog, shell } from "electron";
+import { extname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type {
   AppInfo,
@@ -33,6 +34,13 @@ import type {
   CollectorListResponse,
   InvoiceListResponse,
   InvoiceDetailResponse,
+  SearchHit,
+  AuditLogQuery,
+  AuditLogListResponse,
+  AllocationPreview,
+  AccountReceivableSummary,
+  PaymentProofUploadResult,
+  PaymentProofPreview,
   InvoiceAdjustmentRequest,
   GenerateBillingRequest,
   GenerateBillingResponse,
@@ -172,7 +180,6 @@ const IPC_RECEIVABLES_GET_SUSPENSION_CANDIDATES = "receivables:get-suspension-ca
 const IPC_REPORTS_EXPORT = "reports:export";
 const IPC_REPORTS_GET_LEDGER = "reports:get-ledger";
 const IPC_REPORTS_GET_SOA = "reports:get-soa";
-const IPC_FILES_SELECT_PROOF = "files:select-proof";
 
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
@@ -373,6 +380,42 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_GET_SERVER_URL, (): string => API_BASE_URL);
+
+  ipcMain.handle("audit:get-list", async (_event, params: unknown): Promise<AuditLogListResponse> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const query = new URLSearchParams();
+    for (const [k, v] of Object.entries((params ?? {}) as AuditLogQuery)) {
+      if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+    }
+    return apiRequest<AuditLogListResponse>(`/api/v1/audit-logs?${query.toString()}`, { method: "GET", token });
+  });
+
+  ipcMain.handle("audit:get-actions", async (): Promise<{ data: string[] }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: string[] }>("/api/v1/audit-logs/actions", { method: "GET", token });
+  });
+
+  ipcMain.handle("search:query", async (_event, q: unknown): Promise<{ data: SearchHit[] }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: SearchHit[] }>(`/api/v1/search?q=${encodeURIComponent(String(q ?? ""))}`, { method: "GET", token });
+  });
+
+  ipcMain.handle("payments:preview-allocation", async (_event, payload: unknown): Promise<{ data: AllocationPreview }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const { serviceAccountId, amount } = payload as { serviceAccountId: number; amount: string };
+    const query = new URLSearchParams({ serviceAccountId: String(Number(serviceAccountId)), amount: String(amount) });
+    return apiRequest<{ data: AllocationPreview }>(`/api/v1/payments/allocation-preview?${query.toString()}`, { method: "GET", token });
+  });
+
+  ipcMain.handle("receivables:get-account", async (_event, id: unknown): Promise<{ data: AccountReceivableSummary }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: AccountReceivableSummary }>(`/api/v1/receivables/service-accounts/${Number(id)}`, { method: "GET", token });
+  });
 
   // Change the API server address (login screen). The new address must answer
   // the health endpoint before it is saved, so a typo cannot strand the client.
@@ -1407,19 +1450,59 @@ function registerIpcHandlers(): void {
     return apiRequest<SoaResponse>(`/api/v1/reports/soa/${serviceAccountId}`, { method: "GET", token });
   });
 
-  // Native file picker for recording where a payment proof is filed. Only
-  // the chosen path is returned — nothing is read, uploaded, or copied.
-  ipcMain.handle(IPC_FILES_SELECT_PROOF, async (): Promise<string | null> => {
-    const result = await dialog.showOpenDialog({
+  // Payment proofs are read from disk and uploaded by the main process; the
+  // renderer never gets filesystem access. The server re-validates type,
+  // size and content — these checks only give a faster, friendlier error.
+  const PROOF_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".pdf": "application/pdf" };
+  const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+
+  ipcMain.handle("payment-proofs:upload", async (): Promise<PaymentProofUploadResult | null> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const picked = await dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [
-        { name: "Proof of payment", extensions: ["pdf", "png", "jpg", "jpeg", "webp", "heic"] },
-        { name: "All files", extensions: ["*"] },
-      ],
+      filters: [{ name: "Proof of payment (PNG, JPEG, WEBP, PDF)", extensions: ["png", "jpg", "jpeg", "webp", "pdf"] }],
     });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0]!;
+    if (picked.canceled || picked.filePaths.length === 0) return null;
+    const filePath = picked.filePaths[0]!;
+    const mimeType = PROOF_TYPES[extname(filePath).toLowerCase()];
+    if (!mimeType) throw new Error("Only PNG, JPEG, WEBP or PDF files can be attached");
+    const { size } = await stat(filePath);
+    if (size > MAX_PROOF_BYTES) throw new Error("The file is larger than the 5 MB limit");
+    const dataBase64 = (await readFile(filePath)).toString("base64");
+    return apiRequest<PaymentProofUploadResult>("/api/v1/payment-proofs", {
+      method: "POST",
+      token,
+      body: { fileName: filePath.split(/[\\/]/).pop() ?? "proof", mimeType, dataBase64 },
+    });
   });
+
+  async function fetchProof(id: unknown): Promise<{ mimeType: string; buffer: Buffer }> {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const res = await fetch(`${API_BASE_URL}/api/v1/payment-proofs/${Number(id)}/file`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(body?.message ?? `Could not load proof (status ${res.status})`);
+    }
+    return { mimeType: res.headers.get("content-type") ?? "application/octet-stream", buffer: Buffer.from(await res.arrayBuffer()) };
+  }
+
+  ipcMain.handle("payment-proofs:get-preview", async (_event, id: unknown): Promise<PaymentProofPreview> => {
+    const { mimeType, buffer } = await fetchProof(id);
+    if (!mimeType.startsWith("image/")) return { mimeType, dataUrl: null };
+    return { mimeType, dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}` };
+  });
+
+  ipcMain.handle("payment-proofs:open", async (_event, id: unknown): Promise<void> => {
+    const { mimeType, buffer } = await fetchProof(id);
+    const ext = Object.entries(PROOF_TYPES).find(([, m]) => m === mimeType)?.[0] ?? ".bin";
+    const out = join(tmpdir(), `bcis-proof-${Number(id)}${ext}`);
+    await writeFile(out, buffer);
+    const err = await shell.openPath(out);
+    if (err) throw new Error(err);
+  });
+
 }
 
 void app.whenReady().then(() => {

@@ -824,10 +824,100 @@ export interface GcashPaymentDetail {
   updatedAt: string;
 }
 
+export interface AuditLogRow {
+  id: number;
+  createdAt: string;
+  actorUserId: number | null;
+  actorUsername: string | null;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface AuditLogQuery {
+  page?: number;
+  pageSize?: number;
+  actorUserId?: number;
+  action?: string;
+  entityType?: string;
+  entityId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface AuditLogListResponse {
+  data: AuditLogRow[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export interface SearchHit {
+  kind: "service_account" | "invoice" | "payment";
+  matchedOn: string;
+  reference: string;
+  subscriberId: number;
+  subscriberName: string;
+  accountNumber: string;
+  serviceAccountId: number;
+  serviceNumber: string;
+  serviceStatus: string;
+  planName: string;
+  invoiceId?: number;
+  paymentId?: number;
+}
+
+export interface AllocationPreview {
+  amount: string;
+  balanceBefore: string;
+  balanceAfter: string;
+  allocations: Array<{
+    invoiceId: number;
+    invoiceNumber: string;
+    dueDate: string;
+    balance: string;
+    applied: string;
+    remainingBalance: string;
+    statusAfter: string;
+  }>;
+  unapplied: string;
+}
+
+export interface AccountReceivableSummary {
+  serviceAccount: { id: number; serviceNumber: string; status: string; subscriberId: number; accountNumber: string; firstName: string; lastName: string };
+  outstandingInvoiceCount: number;
+  overdueInvoiceCount: number;
+  outstandingBalance: string;
+  overdueBalance: string;
+  invoices: Array<{ invoiceId: number; invoiceNumber: string; status: string; totalAmount: string; allocated: string; balance: string; dueDate: string }>;
+}
+
+export interface PaymentProofSummary {
+  id: number;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+}
+
+export interface PaymentProofUploadResult {
+  data: PaymentProofSummary & { paymentId: number | null };
+  /** Other proofs with byte-identical content — a possible duplicate submission. */
+  duplicates: Array<{ proofId: number; paymentId: number | null }>;
+}
+
+export interface PaymentProofPreview {
+  mimeType: string;
+  /** data: URL for images; null for PDFs (open externally instead). */
+  dataUrl: string | null;
+}
+
 export interface PaymentDetail extends Payment {
   allocations: PaymentAllocation[];
   reversal: PaymentReversal | null;
   gcash: GcashPaymentDetail | null;
+  proofs: Array<PaymentProofSummary & { duplicates: Array<{ proofId: number; paymentId: number | null }> }>;
   unappliedAmount: string;
 }
 
@@ -843,9 +933,12 @@ export interface CreatePaymentRequest {
   receiptNumber?: string;
   referenceNumber?: string;
   proofAttachmentPath?: string;
+  /** Uploaded proof from paymentProofs.upload() (non-GCash methods). */
+  proofId?: number;
   gcash?: {
     gcashReferenceNumber: string;
     proofAttachmentPath?: string;
+    proofId?: number;
   };
 }
 
@@ -1285,6 +1378,8 @@ export interface BcisDesktopApi {
     verify: (id: number, note?: string) => Promise<VerifyPaymentResponse>;
     /** Reject a pending GCash payment. Requires a reason; creates no allocations. */
     reject: (id: number, reason: string) => Promise<RejectPaymentResponse>;
+    /** Read-only oldest-first allocation preview for an amount. */
+    previewAllocation: (serviceAccountId: number, amount: string) => Promise<{ data: AllocationPreview }>;
   };
   backup: {
     /** List backup history, newest first. */
@@ -1330,6 +1425,17 @@ export interface BcisDesktopApi {
     getAging: () => Promise<AgingSummaryResponse>;
     /** Accounts with at least one overdue invoice, oldest-first. */
     getSuspensionCandidates: () => Promise<SuspensionCandidatesResponse>;
+    /** Balance summary and open invoices for one service account. */
+    getAccount: (serviceAccountId: number) => Promise<{ data: AccountReceivableSummary }>;
+  };
+  audit: {
+    /** Read-only audit trail (Owner, Accounting / Auditor). */
+    getList: (params: AuditLogQuery) => Promise<AuditLogListResponse>;
+    getActions: () => Promise<{ data: string[] }>;
+  };
+  search: {
+    /** Global search: account no., name, contact, address, invoice no., receipt no., GCash ref. */
+    query: (q: string) => Promise<{ data: SearchHit[] }>;
   };
   reports: {
     /** Fetch a report as PDF/XLSX and prompt the user to save it. savedPath is null if the user cancels. */
@@ -1339,13 +1445,12 @@ export interface BcisDesktopApi {
     /** Statement of Account (outstanding invoices + totals) for one service account. */
     getSoa: (serviceAccountId: number) => Promise<SoaResponse>;
   };
-  files: {
-    /**
-     * Opens a native file picker for a payment proof (image/PDF) and
-     * returns the selected path, or null if the user cancelled. Only
-     * records the path as a reference on the payment — does not upload
-     * or copy the file anywhere.
-     */
-    selectProofFile: () => Promise<string | null>;
+  paymentProofs: {
+    /** Pick a PNG/JPEG/WEBP/PDF (max 5 MB) and upload it to the server. Null if cancelled. */
+    upload: () => Promise<PaymentProofUploadResult | null>;
+    /** Fetch a proof for in-app preview (images only render inline). */
+    getPreview: (id: number) => Promise<PaymentProofPreview>;
+    /** Open a proof (e.g. a PDF) in the system viewer. */
+    open: (id: number) => Promise<void>;
   };
 }

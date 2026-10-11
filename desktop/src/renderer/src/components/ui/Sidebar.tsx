@@ -100,6 +100,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       <NavLink
                         key={child.key}
                         to={child.key}
+                        end
                         onClick={onClose}
                         className={({ isActive }) =>
                           `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -122,6 +123,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <NavLink
                 key={item.key}
                 to={item.key}
+                end
                 onClick={onClose}
                 className={({ isActive }) =>
                   `flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm font-medium transition-colors ${

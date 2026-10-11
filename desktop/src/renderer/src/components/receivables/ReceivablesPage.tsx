@@ -271,8 +271,8 @@ function SuspensionCandidatesTab() {
   );
 }
 
-export function ReceivablesPage() {
-  const [tab, setTab] = React.useState<Tab>("outstanding");
+export function ReceivablesPage({ initialTab = "outstanding" }: { initialTab?: Tab } = {}) {
+  const [tab, setTab] = React.useState<Tab>(initialTab);
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: "outstanding", label: "Outstanding" },

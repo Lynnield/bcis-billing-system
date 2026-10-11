@@ -21,13 +21,14 @@ const statusBadgeVariant = batchStatusBadge;
 
 interface CollectionBatchListProps {
   onViewBatch: (batchId: number) => void;
+  initialStatus?: CollectionBatchStatus;
 }
 
-export function CollectionBatchList({ onViewBatch }: CollectionBatchListProps) {
+export function CollectionBatchList({ onViewBatch, initialStatus }: CollectionBatchListProps) {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
   const [collectorFilter, setCollectorFilter] = React.useState<number | "all">("all");
-  const [statusFilter, setStatusFilter] = React.useState<CollectionBatchStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = React.useState<CollectionBatchStatus | "all">(initialStatus ?? "all");
   const [formOpen, setFormOpen] = React.useState(false);
 
   const { data: collectorsData } = useQuery({
