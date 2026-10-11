@@ -98,7 +98,7 @@ export function SubscriberDetail({ subscriberId, onBack }: SubscriberDetailProps
         <p className="font-mono text-muted-foreground">{subscriber.accountNumber}</p>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b" role="tablist">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -354,9 +354,9 @@ function LedgerTab({ subscriberId }: { subscriberId: number }) {
       </div>
       {selected !== null &&
         (view === "ledger" ? (
-          <LedgerView key={`l-${selected}`} serviceAccountId={selected} onBack={() => setView("ledger")} />
+          <LedgerView key={`l-${selected}`} serviceAccountId={selected} />
         ) : (
-          <StatementOfAccountView key={`s-${selected}`} serviceAccountId={selected} onBack={() => setView("ledger")} />
+          <StatementOfAccountView key={`s-${selected}`} serviceAccountId={selected} />
         ))}
     </div>
   );

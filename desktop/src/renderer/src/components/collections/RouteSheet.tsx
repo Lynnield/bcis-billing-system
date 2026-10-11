@@ -5,6 +5,7 @@ import { getServiceAccounts } from "@/lib/service-account-api";
 import { getSubscriberById } from "@/lib/subscriber-api";
 import { getSoa } from "@/lib/report-api";
 import { getCollectorById } from "@/lib/collection-area-api";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, Printer } from "lucide-react";
 
 interface RouteSheetProps {
@@ -119,9 +120,9 @@ export function RouteSheet({ collectorId, onBack }: RouteSheetProps) {
                     <TableCell className="font-mono">{r.serviceNumber}</TableCell>
                     <TableCell className="font-medium">{r.subscriberName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{r.address || "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">₱{r.currentBill}</TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive">₱{r.arrears}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">₱{r.totalDue}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(r.currentBill)}</TableCell>
+                    <TableCell className="text-right tabular-nums text-destructive">{formatPeso(r.arrears)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{formatPeso(r.totalDue)}</TableCell>
                   </TableRow>
                 ))
               )}

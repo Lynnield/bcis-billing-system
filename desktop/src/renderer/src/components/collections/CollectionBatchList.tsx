@@ -10,6 +10,7 @@ import { getCollectors } from "@/lib/collection-area-api";
 import { CollectionBatchForm } from "./CollectionBatchForm";
 import type { CollectionBatchStatus } from "@/shared/types";
 import { batchStatusBadge, batchStatusLabel } from "./batch-status";
+import { formatPeso } from "@/lib/utils";
 import { Plus, Eye } from "lucide-react";
 
 const STATUS_OPTIONS: Array<{ value: CollectionBatchStatus | "all"; label: string }> = [
@@ -126,8 +127,8 @@ export function CollectionBatchList({ onViewBatch, initialStatus }: CollectionBa
                   <TableRow key={b.id}>
                     <TableCell className="font-medium">{collectorNameById.get(b.collectorId) ?? `#${b.collectorId}`}</TableCell>
                     <TableCell>{new Date(b.batchDate).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right tabular-nums">₱{b.expectedAmount}</TableCell>
-                    <TableCell className="text-right tabular-nums">₱{b.remittedAmount}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(b.expectedAmount)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(b.remittedAmount)}</TableCell>
                     <TableCell className="text-right tabular-nums text-destructive">
                       {Number(b.shortageAmount) > 0 ? `₱${b.shortageAmount}` : "—"}
                     </TableCell>

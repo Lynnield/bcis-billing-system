@@ -220,7 +220,7 @@ export function Dashboard() {
       </div>
 
       {d.collectorPerformance && d.recentPayments && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 2xl:grid-cols-2">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Collector Performance — This Month</CardTitle>
@@ -246,7 +246,7 @@ export function Dashboard() {
                   ) : (
                     d.collectorPerformance.map((c) => (
                       <TableRow key={c.collectorId}>
-                        <TableCell>{c.collectorName}</TableCell>
+                        <TableCell className="whitespace-nowrap">{c.collectorName}</TableCell>
                         <TableCell className="text-right tabular-nums">{c.batches}</TableCell>
                         <TableCell className="text-right tabular-nums">{c.accounts}</TableCell>
                         <TableCell className="text-right tabular-nums">{peso(c.collected)}</TableCell>
@@ -279,7 +279,7 @@ export function Dashboard() {
                 <TableBody>
                   {d.recentPayments.map((p) => (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/payments/${p.id}`)}>
-                      <TableCell className="font-mono text-xs">{p.receiptNumber ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-xs">{p.receiptNumber ?? "—"}</TableCell>
                       <TableCell className="max-w-[160px] truncate">{p.name}</TableCell>
                       <TableCell>
                         {METHOD_LABEL[p.method] ?? p.method}

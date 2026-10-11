@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { getLedger } from "@/lib/report-api";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, Printer } from "lucide-react";
 
 interface LedgerViewProps {
   serviceAccountId: number;
-  onBack: () => void;
+  /** Omit when embedded (e.g. in the subscriber profile) to hide Back. */
+  onBack?: () => void;
 }
 
 export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
@@ -50,10 +52,14 @@ export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between print:hidden">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
+        {onBack ? (
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+        ) : (
+          <span />
+        )}
         <Button onClick={() => window.print()}>
           <Printer className="mr-2 h-4 w-4" />
           Print
@@ -64,7 +70,7 @@ export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
         <h2 className="text-2xl font-semibold">Subscriber Ledger — {serviceAccount.subscriberName}</h2>
         <p className="text-muted-foreground">
           Service Account {serviceAccount.serviceNumber} · Closing balance:{" "}
-          <span className="font-semibold text-foreground">₱{closingBalance}</span>
+          <span className="font-semibold text-foreground">{formatPeso(closingBalance)}</span>
         </p>
       </div>
 
@@ -95,7 +101,7 @@ export function LedgerView({ serviceAccountId, onBack }: LedgerViewProps) {
                   <TableCell className="text-sm">{e.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{Number(e.debit) > 0 ? `₱${e.debit}` : ""}</TableCell>
                   <TableCell className="text-right tabular-nums">{Number(e.credit) > 0 ? `₱${e.credit}` : ""}</TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">₱{e.runningBalance}</TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">{formatPeso(e.runningBalance)}</TableCell>
                 </TableRow>
               ))
             )}

@@ -10,7 +10,7 @@ import { getServiceAccountById } from "@/lib/service-account-api";
 import { getGcashReviewPermission } from "@/lib/gcash-verification";
 import { ProofViewer } from "./ProofViewer";
 import { AlertTriangle, Loader2, RefreshCw, ShieldCheck, ShieldX } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPeso } from "@/lib/utils";
 
 /**
  * Two-pane GCash verification queue (spec 4.3). Left: pending GCash
@@ -85,7 +85,7 @@ export function GcashVerificationQueue() {
                         <span className="font-mono">#{p.id}</span>
                         <span className="block text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleString()}</span>
                       </span>
-                      <span className="font-medium tabular-nums">₱{p.amount}</span>
+                      <span className="font-medium tabular-nums">{formatPeso(p.amount)}</span>
                     </button>
                   </li>
                 ))}
@@ -171,7 +171,7 @@ function ReviewPane({ paymentId }: { paymentId: number }) {
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Submission</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Amount</dt>
-          <dd className="text-right text-lg font-semibold tabular-nums">₱{payment.amount}</dd>
+          <dd className="text-right text-lg font-semibold tabular-nums">{formatPeso(payment.amount)}</dd>
           <dt className="text-muted-foreground">GCash reference</dt>
           <dd className="text-right font-mono">{payment.gcash?.gcashReferenceNumber ?? "—"}</dd>
           <dt className="text-muted-foreground">Service account</dt>

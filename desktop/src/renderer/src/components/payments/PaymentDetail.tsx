@@ -13,6 +13,7 @@ import { getInvoiceById } from "@/lib/invoice-api";
 import { getGcashReviewPermission } from "@/lib/gcash-verification";
 import { ProofViewer } from "./ProofViewer";
 import type { PaymentMethod, PaymentStatus, GcashVerificationStatus } from "@/shared/types";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, Receipt, User, FileText, Undo2, Loader2, AlertTriangle, ShieldCheck, ShieldX, Printer } from "lucide-react";
 
 // Only these roles may reverse a posted payment, matching
@@ -229,10 +230,10 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
             <div className="border-t border-dashed" />
             <div className="flex justify-between text-lg font-bold">
               <span>Amount Paid</span>
-              <span>₱{payment.amount}</span>
+              <span>{formatPeso(payment.amount)}</span>
             </div>
             {Number(payment.unappliedAmount) > 0 && (
-              <p className="text-xs text-muted-foreground text-right">Includes ₱{payment.unappliedAmount} kept as advance/unapplied balance</p>
+              <p className="text-xs text-muted-foreground text-right">Includes {formatPeso(payment.unappliedAmount)} kept as advance/unapplied balance</p>
             )}
             <div className="border-t border-dashed pt-4 text-center text-xs text-muted-foreground">
               This receipt confirms a posted, allocated payment. Thank you.
@@ -255,7 +256,7 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
           <CardContent className="space-y-3">
             <div>
               <p className="text-sm text-muted-foreground">Amount</p>
-              <p className="text-2xl font-semibold">₱{payment.amount}</p>
+              <p className="text-2xl font-semibold">{formatPeso(payment.amount)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Method</p>
@@ -267,7 +268,7 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Unapplied (Advance) Amount</p>
-              <p className="font-medium">₱{payment.unappliedAmount}</p>
+              <p className="font-medium">{formatPeso(payment.unappliedAmount)}</p>
             </div>
           </CardContent>
         </Card>
@@ -450,7 +451,7 @@ export function PaymentDetail({ paymentId, onBack }: PaymentDetailProps) {
                         </p>
                       )}
                     </div>
-                    <p className="font-medium">₱{alloc.amount}</p>
+                    <p className="font-medium">{formatPeso(alloc.amount)}</p>
                   </div>
                 );
               })}

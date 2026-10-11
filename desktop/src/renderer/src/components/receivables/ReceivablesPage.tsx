@@ -10,6 +10,7 @@ import { useToast } from "@/lib/toast";
 import { getOutstandingInvoices, getAgingSummary, getSuspensionCandidates } from "@/lib/receivables-api";
 import { suspendServiceAccount } from "@/lib/service-account-api";
 import type { AgingBucketKey } from "@/shared/types";
+import { formatPeso } from "@/lib/utils";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 type Tab = "outstanding" | "overdue" | "aging" | "suspension";
@@ -102,7 +103,7 @@ function InvoiceTable({ overdueOnly }: { overdueOnly: boolean }) {
                   <TableRow key={r.invoiceId}>
                     <TableCell className="font-mono">{r.invoiceNumber}</TableCell>
                     <TableCell className="font-mono">{r.serviceAccountId}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">₱{r.balance}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{formatPeso(r.balance)}</TableCell>
                     <TableCell>{new Date(r.dueDate).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.daysOverdue > 0 ? r.daysOverdue : "—"}</TableCell>
                     <TableCell>
@@ -163,7 +164,7 @@ function AgingTab() {
               <CardTitle className="text-sm font-medium text-muted-foreground capitalize">{b}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-xl font-semibold tabular-nums">₱{buckets[b].amount}</div>
+              <div className="text-xl font-semibold tabular-nums">{formatPeso(buckets[b].amount)}</div>
               <p className="text-xs text-muted-foreground mt-1">{buckets[b].count} invoice{buckets[b].count === 1 ? "" : "s"}</p>
             </CardContent>
           </Card>
@@ -174,7 +175,7 @@ function AgingTab() {
           <CardTitle className="text-sm font-medium text-muted-foreground">Total Outstanding</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold tabular-nums">₱{data.data.total.amount}</div>
+          <div className="text-2xl font-bold tabular-nums">{formatPeso(data.data.total.amount)}</div>
           <p className="text-xs text-muted-foreground mt-1">{data.data.total.count} invoices across all buckets</p>
         </CardContent>
       </Card>
@@ -247,7 +248,7 @@ function SuspensionCandidatesTab() {
                 <TableCell className="text-right tabular-nums">{c.overdueInvoiceCount}</TableCell>
                 <TableCell className="font-mono">{c.oldestOverdueInvoice}</TableCell>
                 <TableCell className="text-right tabular-nums text-destructive">{c.oldestOverdueDays}</TableCell>
-                <TableCell className="text-right tabular-nums font-medium">₱{c.overdueBalance}</TableCell>
+                <TableCell className="text-right tabular-nums font-medium">{formatPeso(c.overdueBalance)}</TableCell>
                 <TableCell>
                   <Button
                     variant="destructive"

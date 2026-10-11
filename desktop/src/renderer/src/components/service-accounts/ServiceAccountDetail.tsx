@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
+import { useNavigate } from "react-router-dom";
 import {
   getServiceAccountById,
   suspendServiceAccount,
@@ -17,6 +18,7 @@ import {
   getReconnectionHistory,
 } from "@/lib/service-account-api";
 import type { ServiceAccountDetail, ServiceAccountStatus } from "@/shared/types";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, User, CreditCard, MapPin, Calendar, AlertTriangle, RotateCcw, Loader2, History } from "lucide-react";
 
 const statusBadgeVariant: Record<ServiceAccountStatus, "default" | "success" | "warning" | "destructive" | "secondary"> = {
@@ -42,6 +44,7 @@ interface ServiceAccountDetailProps {
 
 export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetailProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { success: showSuccess, error: showError } = useToast();
 
   const { data: accountData, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useQuery({
@@ -271,6 +274,9 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
             <div>
               <p className="text-sm text-muted-foreground">Name</p>
               <p className="font-medium">{account.subscriber.firstName} {account.subscriber.lastName}</p>
+              <button className="text-sm text-primary underline underline-offset-2" onClick={() => navigate(`/subscribers/${account.subscriber.id}`)}>
+                Open subscriber profile
+              </button>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Subscriber Status</p>
@@ -307,11 +313,11 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Installation Fee</p>
-                <p className="font-medium tabular-nums">₱{account.plan.installationFee}</p>
+                <p className="font-medium tabular-nums">{formatPeso(account.plan.installationFee)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Reconnection Fee</p>
-                <p className="font-medium tabular-nums">₱{account.plan.reconnectionFee}</p>
+                <p className="font-medium tabular-nums">{formatPeso(account.plan.reconnectionFee)}</p>
               </div>
             </div>
             <div>
@@ -320,7 +326,7 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Monthly Price</p>
-              <p className="font-medium">₱{account.plan.price}</p>
+              <p className="font-medium">{formatPeso(account.plan.price)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Plan Status</p>
@@ -480,7 +486,7 @@ export function ServiceAccountDetail({ accountId, onBack }: ServiceAccountDetail
                       </TableCell>
                       <TableCell>{r.completionDate ? new Date(r.completionDate).toLocaleString() : "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        ₱{r.fee}
+                        {formatPeso(r.fee)}
                         {r.billedInvoiceId ? <span className="block text-xs text-muted-foreground">billed</span> : null}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground whitespace-pre-line">{r.notes ?? "—"}</TableCell>

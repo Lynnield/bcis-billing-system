@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { getSoa } from "@/lib/report-api";
 import type { AgingBucketKey } from "@/shared/types";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, Printer } from "lucide-react";
 
 interface StatementOfAccountViewProps {
   serviceAccountId: number;
-  onBack: () => void;
+  /** Omit when embedded (e.g. in the subscriber profile) to hide Back. */
+  onBack?: () => void;
 }
 
 const bucketBadgeVariant: Record<string, "default" | "warning" | "destructive" | "secondary"> = {
@@ -60,10 +62,14 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between print:hidden">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
+        {onBack ? (
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+        ) : (
+          <span />
+        )}
         <Button onClick={() => window.print()}>
           <Printer className="mr-2 h-4 w-4" />
           Print Statement
@@ -89,7 +95,7 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
           <dl className="text-sm space-y-1">
             <div className="flex justify-between"><dt className="text-muted-foreground">Service Account</dt><dd className="font-mono">{serviceAccount.serviceNumber}</dd></div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Plan</dt><dd>{plan.name} ({service.type})</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">Monthly Rate</dt><dd>₱{plan.price}</dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground">Monthly Rate</dt><dd>{formatPeso(plan.price)}</dd></div>
           </dl>
         </div>
       </div>
@@ -97,11 +103,11 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border p-4">
           <p className="text-sm text-muted-foreground">Outstanding Balance</p>
-          <p className="text-2xl font-bold tabular-nums">₱{totals.outstandingBalance}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatPeso(totals.outstandingBalance)}</p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-sm text-muted-foreground">Overdue Balance</p>
-          <p className="text-2xl font-bold tabular-nums text-destructive">₱{totals.overdueBalance}</p>
+          <p className="text-2xl font-bold tabular-nums text-destructive">{formatPeso(totals.overdueBalance)}</p>
         </div>
       </div>
 
@@ -129,8 +135,8 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
                 outstandingInvoices.map((inv) => (
                   <TableRow key={inv.invoiceId}>
                     <TableCell className="font-mono">{inv.invoiceNumber}</TableCell>
-                    <TableCell className="text-right tabular-nums">₱{inv.totalAmount}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">₱{inv.balance}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(inv.totalAmount)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{formatPeso(inv.balance)}</TableCell>
                     <TableCell>{inv.dueDate}</TableCell>
                     <TableCell>
                       <Badge variant={bucketBadgeVariant[inv.bucket as AgingBucketKey]}>{inv.bucket}</Badge>
@@ -168,7 +174,7 @@ export function StatementOfAccountView({ serviceAccountId, onBack }: StatementOf
                   <TableRow key={p.id}>
                     <TableCell>{new Date(p.paymentDate).toLocaleDateString()}</TableCell>
                     <TableCell>{p.method}</TableCell>
-                    <TableCell className="text-right tabular-nums">₱{p.amount}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPeso(p.amount)}</TableCell>
                     <TableCell className="font-mono">{p.receiptNumber ?? "—"}</TableCell>
                     <TableCell>{p.status}</TableCell>
                   </TableRow>

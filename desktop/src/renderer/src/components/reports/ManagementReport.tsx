@@ -9,6 +9,9 @@ import { exportReport } from "@/lib/report-api";
 import type { ReportCatalogEntry, ReportExportFormat, ReportRunParams } from "@/shared/types";
 import { FileSpreadsheet, FileText, Loader2, Play } from "lucide-react";
 
+// Free-text columns may wrap; everything else stays on one line.
+const WRAPPING = new Set(["reason", "notes", "details", "address", "name", "description"]);
+
 function toQuery(params: ReportRunParams): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") q.set(k, String(v));
@@ -150,7 +153,7 @@ export function ManagementReport({ report }: { report: ReportCatalogEntry }) {
                   result.rows.map((row, i) => (
                     <TableRow key={i}>
                       {result.columns.map((c) => (
-                        <TableCell key={c.key} className={c.align === "right" ? "text-right tabular-nums" : undefined}>
+                        <TableCell key={c.key} className={c.align === "right" ? "whitespace-nowrap text-right tabular-nums" : WRAPPING.has(c.key) ? undefined : "whitespace-nowrap"}>
                           {String(row[c.key] ?? "")}
                         </TableCell>
                       ))}

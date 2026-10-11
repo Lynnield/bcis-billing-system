@@ -12,6 +12,7 @@ import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import { adjustInvoice, finalizeInvoice, getInvoiceById, voidInvoice } from "@/lib/invoice-api";
 import { invoiceStatusBadge, invoiceStatusLabel } from "./invoice-status";
+import { formatPeso } from "@/lib/utils";
 import { ArrowLeft, Ban, CheckCircle2, Loader2, Printer, SlidersHorizontal } from "lucide-react";
 
 // Matches api/src/routes/invoices.ts. The backend is authoritative; these
@@ -210,8 +211,8 @@ export function InvoiceDetail({ invoiceId, onBack }: InvoiceDetailProps) {
             <CardTitle className="text-lg">Total</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            <p className="text-2xl font-semibold tabular-nums">₱{invoice.totalAmount}</p>
-            <p className="text-muted-foreground tabular-nums">Lines ₱{invoice.subtotal} · Adjustments ₱{invoice.adjustmentsTotal}</p>
+            <p className="text-2xl font-semibold tabular-nums">{formatPeso(invoice.totalAmount)}</p>
+            <p className="text-muted-foreground tabular-nums">Lines {formatPeso(invoice.subtotal)} · Adjustments {formatPeso(invoice.adjustmentsTotal)}</p>
           </CardContent>
         </Card>
       </div>

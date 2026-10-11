@@ -12,6 +12,7 @@ import { getServiceAccounts } from "@/lib/service-account-api";
 import { useNavigate } from "react-router-dom";
 import { PaymentDetail } from "./PaymentDetail";
 import type { PaymentMethod, PaymentStatus } from "@/shared/types";
+import { formatPeso } from "@/lib/utils";
 import { Plus, Eye, Loader2 } from "lucide-react";
 
 // Matches api/src/routes/payments.ts POST_ROLES. The backend enforces this
@@ -191,7 +192,7 @@ export function PaymentList() {
                 <TableRow key={payment.id}>
                   <TableCell className="font-mono">{payment.serviceAccountId}</TableCell>
                   <TableCell>{methodLabel[payment.method]}</TableCell>
-                  <TableCell className="font-medium">₱{payment.amount}</TableCell>
+                  <TableCell className="font-medium">{formatPeso(payment.amount)}</TableCell>
                   <TableCell>{new Date(payment.paymentDate).toLocaleDateString()}</TableCell>
                   <TableCell className="font-mono">{payment.receiptNumber ?? "—"}</TableCell>
                   <TableCell className="font-mono">{payment.referenceNumber ?? "—"}</TableCell>

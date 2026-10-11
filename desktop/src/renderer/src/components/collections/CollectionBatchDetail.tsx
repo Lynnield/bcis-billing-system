@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Modal } from "@/components/ui/Modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useToast } from "@/lib/toast";
+import { formatPeso } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import {
   getCollectionBatchById,
@@ -183,10 +184,10 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
 
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Collection</h3>
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat label="Expected Receivable (route)" value={`₱${sum.expectedReceivable}`} />
-        <Stat label="Cash Collected" value={`₱${sum.cashCollected}`} />
-        <Stat label="GCash / Non-cash Collected" value={`₱${sum.nonCashCollected}`} />
-        <Stat label="Uncollected" value={`₱${sum.uncollected}`} tone="muted" />
+        <Stat label="Expected Receivable (route)" value={formatPeso(sum.expectedReceivable)} />
+        <Stat label="Cash Collected" value={formatPeso(sum.cashCollected)} />
+        <Stat label="GCash / Non-cash Collected" value={formatPeso(sum.nonCashCollected)} />
+        <Stat label="Uncollected" value={formatPeso(sum.uncollected)} tone="muted" />
       </div>
       <p className="text-sm text-muted-foreground">
         Accounts collected: <span className="font-medium tabular-nums">{sum.accountsCollected}</span> of{" "}
@@ -195,10 +196,10 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
 
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cash Reconciliation</h3>
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat label="Expected Cash" value={`₱${sum.expectedCash}`} />
-        <Stat label="Remitted Cash" value={sum.remittedCash === null ? "—" : `₱${sum.remittedCash}`} />
-        <Stat label="Shortage" value={`₱${batch.shortageAmount}`} tone={batch.shortageAmount !== "0.00" ? "danger" : undefined} />
-        <Stat label="Overage" value={`₱${batch.overageAmount}`} tone={batch.overageAmount !== "0.00" ? "success" : undefined} />
+        <Stat label="Expected Cash" value={formatPeso(sum.expectedCash)} />
+        <Stat label="Remitted Cash" value={formatPeso(sum.remittedCash)} />
+        <Stat label="Shortage" value={formatPeso(batch.shortageAmount)} tone={batch.shortageAmount !== "0.00" ? "danger" : undefined} />
+        <Stat label="Overage" value={formatPeso(batch.overageAmount)} tone={batch.overageAmount !== "0.00" ? "success" : undefined} />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -288,7 +289,7 @@ export function CollectionBatchDetail({ batchId, onBack }: CollectionBatchDetail
                   <TableCell className="font-mono">#{p.paymentId}</TableCell>
                   <TableCell className="font-mono">{p.serviceAccountId}</TableCell>
                   <TableCell>{p.method === "cash" ? "Cash" : p.method === "gcash" ? "GCash (non-cash)" : `${p.method} (non-cash)`}</TableCell>
-                  <TableCell className="text-right tabular-nums">₱{p.amount}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatPeso(p.amount)}</TableCell>
                   <TableCell>{new Date(p.paymentDate).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <Badge variant={p.status === "posted" ? "success" : "secondary"}>{p.status}</Badge>

@@ -11,6 +11,7 @@ import { createPayment } from "@/lib/payment-api";
 import type { CreatePaymentRequest, PaymentMethod, PaymentProofUploadResult, SearchHit } from "@/shared/types";
 import { ProofUploadField } from "./ProofViewer";
 import { PaymentDetail } from "./PaymentDetail";
+import { formatPeso } from "@/lib/utils";
 import { CheckCircle2, Loader2, Printer, Search } from "lucide-react";
 
 // Same rule as the API's moneyString: up to 2 decimals, kept as a string.
@@ -23,6 +24,8 @@ const METHOD_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "cheque", label: "Cheque" },
   { value: "other", label: "Other" },
 ];
+
+const peso = (v: string) => `₱${Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = React.useState(value);
@@ -105,6 +108,9 @@ export function ReceivePayment() {
     onSuccess: (res) => {
       const p = res.data;
       setPosted({ id: p.id, receiptNumber: p.receiptNumber, status: p.status });
+      // The form collapses to a confirmation card; bring it into view.
+      document.querySelector("main")?.scrollTo({ top: 0 });
+      window.scrollTo({ top: 0 });
       showSuccess(p.status === "pending" ? "GCash payment submitted for verification" : `Payment posted — receipt ${p.receiptNumber ?? ""}`);
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["receivable-account"] });
@@ -265,12 +271,12 @@ export function ReceivePayment() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-muted-foreground">Outstanding</p>
-                          <p className="text-2xl font-semibold tabular-nums">₱{account.outstandingBalance}</p>
+                          <p className="text-2xl font-semibold tabular-nums">{peso(account.outstandingBalance)}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Overdue</p>
                           <p className={`text-2xl font-semibold tabular-nums ${account.overdueBalance !== "0.00" ? "text-destructive" : ""}`}>
-                            ₱{account.overdueBalance}
+                            {peso(account.overdueBalance)}
                           </p>
                         </div>
                       </div>
@@ -349,11 +355,11 @@ export function ReceivePayment() {
                           </Table>
                           <div className="mt-2 flex justify-between text-sm">
                             <span>Balance after payment</span>
-                            <span className="font-semibold tabular-nums">₱{preview.balanceAfter}</span>
+                            <span className="font-semibold tabular-nums">{peso(preview.balanceAfter)}</span>
                           </div>
                           {preview.unapplied !== "0.00" && (
                             <p className="text-sm text-muted-foreground">
-                              ₱{preview.unapplied} will be kept as an advance and applied to future invoices.
+                              {formatPeso(preview.unapplied)} will be kept as an advance and applied to future invoices.
                             </p>
                           )}
                         </>
