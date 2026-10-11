@@ -1,0 +1,12 @@
+{
+  "name": "bcis-docs-build",
+  "private": true,
+  "description": "Renders docs/erd.png and the PDF deliverables from the Markdown sources using the desktop package's Electron.",
+  "scripts": {
+    "build": "node run.cjs"
+  },
+  "devDependencies": {
+    "marked": "^15.0.12",
+    "mermaid": "^11.17.2"
+  }
+}

@@ -65,4 +65,16 @@ desktop/    Electron app (main/preload/renderer)
 docs/       Technical documentation, user manual, ERD, deployment guide
 tests/      Acceptance-test report and screenshot evidence
 reports-samples/  Sample exported PDF/XLSX reports
+scripts/    assemble-submission.cjs — builds the spec 9.1 submission folder
 ```
+
+## Deliverables
+
+- PDFs and the ERD are generated from the Markdown/schema sources:
+  `cd api && npm run erd` (schema → `docs/erd.mmd`), then
+  `cd docs/build && npm install && npm run build` (→ `docs/erd.png`, `docs/erd.pdf`,
+  `docs/*.pdf`, `tests/acceptance-test-report.pdf`).
+- `cd desktop && npm run dist:win` builds the installer into `desktop/release/`.
+- `node scripts/assemble-submission.cjs` copies everything into the spec 9.1 layout
+  under `submission/BCIS-Subscription-Billing-System/` (`source/`, `database/migrations`,
+  `database/seeds`, `docs/`, `tests/`, `reports-samples/`, `release/`, `README.md`).

@@ -36,3 +36,7 @@ coverage/
 desktop/e2e-report/
 desktop/test-results/
 desktop/e2e/.e2e-state.json
+
+# Assembled spec 9.1 submission folder (scripts/assemble-submission.cjs)
+submission/
+docs/build/node_modules/

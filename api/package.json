@@ -14,7 +14,8 @@
     "db:check": "drizzle-kit check",
     "db:seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
     "bootstrap:owner": "tsx --env-file-if-exists=.env src/db/bootstrap-owner.ts",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "erd": "tsx scripts/generate-erd.ts"
   },
   "keywords": [],
   "author": "",

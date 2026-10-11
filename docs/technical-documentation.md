@@ -107,6 +107,10 @@ PC 3: Operations Desktop    ─┘                │
 ERD is `docs/erd.png` (source `docs/erd.mmd`). Every monetary column is
 `NUMERIC(14,2)` with a check constraint against negative values.
 
+![Entity-relationship diagram, generated from the Drizzle schema](erd.png)
+
+*Full-size, zoomable version: `docs/erd.pdf`. Regenerate with `cd api && npm run erd`, then `cd docs/build && npm run build`.*
+
 | Domain | Table | Purpose and key columns |
 |---|---|---|
 | Security | `users` | Login identity; scrypt `password_hash`; `status`; `failed_login_count`, `locked_until`, `last_login_at`. |

@@ -10,6 +10,38 @@ are also driven end to end through the real Electron app with Playwright
 database). Last full run: **246/246 API tests, 68/68 desktop tests, 4/4
 end-to-end tests passing; lint 0 errors.**
 
+## Test Plan
+
+**Objective.** Show that money is never lost or duplicated, that posted
+records are only reversed (never edited or deleted), that authorization is
+enforced by the server, and that three clients can work at once without
+corruption — the spec 7 acceptance criteria.
+
+**Levels and tools.**
+
+| Level | What it covers | Tool / command | Environment |
+|---|---|---|---|
+| Unit / domain | Money parsing and cents math, invoice status rule, aging buckets, allocation order, permission defaults, server-address rules | Vitest (`api`, `desktop`: `npm test`) | Node |
+| API / integration | Every route: validation (400), authentication (401), permission (403), conflicts (409), posting transactions, audit rows, concurrency via parallel requests | Vitest + Fastify `inject` | Real PostgreSQL, `bcis_billing_test` (truncated per suite) |
+| End to end | Key desktop workflows through the real Electron UI | Playwright `_electron` (`desktop`: `npm run e2e`) | Built app + API on port 3199 + throwaway `bcis_billing_e2e` DB, migrated and seeded, dropped afterwards |
+| Manual / visual | Layout, printing, three-PC demo | Live sweep, `docs/concurrency-demo-checklist.md` | Seeded scratch DB; screenshots in `tests/screenshots/` |
+| Static | Types and lint | `npm run typecheck`, `npm run lint` | — |
+
+**Test data.** Synthetic only: per-suite fixtures in the API tests and the
+demo seed (`npm run db:seed`: 50 subscribers, 62 accounts, 74 invoices with
+12 overdue across three aging buckets, 38 payments incl. GCash
+verified/rejected/pending, two batches, one reversal, a suspension and
+reconnection cycle). The development database is never used by tests.
+
+**Entry criteria.** Migrations apply cleanly to an empty database; typecheck
+passes.
+**Exit criteria.** All 12 acceptance tests pass; all automated suites pass;
+lint has no errors; every defect found has a fix and a regression test or
+documented regression check (bug log below).
+
+**Traceability.** Each AT section below names the test file and test case
+that proves it.
+
 ## AT-01 — Exact payment
 
 **Test data**: Invoice ₱999; payment ₱999.
