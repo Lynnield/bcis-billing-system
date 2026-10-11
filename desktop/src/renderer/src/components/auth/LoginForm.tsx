@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/Button";
+import { ServerAddress } from "./ServerAddress";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
@@ -173,7 +174,8 @@ export function LoginForm() {
             </Button>
           </form>
 
-          <footer className="mt-6 text-center text-sm text-muted-foreground">
+          <footer className="mt-6 space-y-3 text-center text-sm text-muted-foreground">
+            <ServerAddress />
             <p>Bukidnon Cable &amp; Internet Services</p>
           </footer>
         </div>

@@ -95,6 +95,10 @@ import type {
 const api: BcisDesktopApi = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke("app:get-info"),
   ping: (message: string): Promise<PingResult> => ipcRenderer.invoke("app:ping", message),
+  server: {
+    getUrl: (): Promise<string> => ipcRenderer.invoke("app:get-server-url"),
+    setUrl: (url: string): Promise<string> => ipcRenderer.invoke("app:set-server-url", url),
+  },
   auth: {
     login: (credentials: LoginRequest): Promise<SessionStatus> =>
       ipcRenderer.invoke("auth:login", credentials),

@@ -40,11 +40,11 @@ proving it live, on three physical machines on one LAN, per
 
 Repeat on all three physical machines, including the one running the server.
 
-- [ ] **Set the client's API base URL.** Edit `desktop/.env` on every
-      machine — never `localhost`, unless that client is the server itself:
-      ```
-      VITE_API_BASE_URL=http://<server-lan-ip>:3000
-      ```
+- [ ] **Point the client at the server.** On the login screen click
+      **Server: … Change**, enter `http://<server-lan-ip>:3000` and click
+      **Test & Save** (it must answer the health check before it is saved).
+      Never `localhost`, unless that client is the server itself. The setting
+      is remembered per PC.
 - [ ] **Launch the desktop app.**
       ```
       cd desktop

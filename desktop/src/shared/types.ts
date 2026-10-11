@@ -1095,6 +1095,12 @@ export interface ReportExportResult {
 export interface BcisDesktopApi {
   getAppInfo: () => Promise<AppInfo>;
   ping: (message: string) => Promise<PingResult>;
+  server: {
+    /** The API server address this client is using. */
+    getUrl: () => Promise<string>;
+    /** Validate, health-check and save a new API server address. */
+    setUrl: (url: string) => Promise<string>;
+  };
   auth: {
     /** Attempt login with credentials. Returns session status on success. */
     login: (credentials: LoginRequest) => Promise<SessionStatus>;

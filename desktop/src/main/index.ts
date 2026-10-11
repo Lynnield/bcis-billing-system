@@ -83,9 +83,12 @@ import type {
   ServiceAccountStatus,
   ServiceStatus,
 } from "../shared/types";
+import { DEFAULT_SERVER_URL, normalizeServerUrl } from "./server-url";
 
 const IPC_GET_INFO = "app:get-info";
 const IPC_PING = "app:ping";
+const IPC_GET_SERVER_URL = "app:get-server-url";
+const IPC_SET_SERVER_URL = "app:set-server-url";
 const IPC_AUTH_LOGIN = "auth:login";
 const IPC_AUTH_LOGOUT = "auth:logout";
 const IPC_AUTH_GET_SESSION = "auth:get-session";
@@ -174,32 +177,24 @@ const IPC_FILES_SELECT_PROOF = "files:select-proof";
 const STORE_KEY_TOKEN = "auth_token";
 const STORE_KEY_USER = "auth_user";
 
-// Validate and normalize API base URL
-function getApiBaseUrl(): string {
-  const fromEnv = process.env.VITE_API_BASE_URL ?? "http://localhost:3000";
-  let url: URL;
-  try {
-    url = new URL(fromEnv);
-  } catch {
-    throw new Error(`Invalid API base URL: ${fromEnv}`);
-  }
+const STORE_KEY_SERVER_URL = "api_base_url";
 
-  // Allow localhost HTTP for development
-  const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-  // Require HTTPS for non-localhost
-  if (!isLocalhost && url.protocol !== "https:") {
-    throw new Error(`API base URL must use HTTPS for non-localhost origins: ${fromEnv}`);
+// Server address precedence: the value saved from the login screen (so an
+// installed client can be pointed at the LAN server without editing files),
+// then VITE_API_BASE_URL (development), then this PC.
+function resolveInitialServerUrl(): string {
+  const saved = persistentStore.get(STORE_KEY_SERVER_URL);
+  for (const candidate of [saved, process.env.VITE_API_BASE_URL]) {
+    if (typeof candidate === "string" && candidate) {
+      try {
+        return normalizeServerUrl(candidate);
+      } catch {
+        // fall through to the next source
+      }
+    }
   }
-
-  // Only allow http/https
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`API base URL must use HTTP or HTTPS: ${fromEnv}`);
-  }
-
-  return url.toString().replace(/\/$/, "");
+  return DEFAULT_SERVER_URL;
 }
-
-const API_BASE_URL = getApiBaseUrl();
 
 // Secure storage helpers using Electron safeStorage
 function encryptToken(token: string): string {
@@ -236,6 +231,8 @@ const persistentStore = new Store({
   name: "bcis-auth",
   clearInvalidConfig: true,
 });
+
+let API_BASE_URL = resolveInitialServerUrl();
 
 // Helper to make authenticated API requests from main process
 async function apiRequest<T>(path: string, options: { method?: string; token?: string; body?: unknown } = {}): Promise<T> {
@@ -373,6 +370,24 @@ function registerIpcHandlers(): void {
       pong: true,
       timestamp: new Date().toISOString(),
     };
+  });
+
+  ipcMain.handle(IPC_GET_SERVER_URL, (): string => API_BASE_URL);
+
+  // Change the API server address (login screen). The new address must answer
+  // the health endpoint before it is saved, so a typo cannot strand the client.
+  ipcMain.handle(IPC_SET_SERVER_URL, async (_event, input: unknown): Promise<string> => {
+    if (typeof input !== "string") throw new Error("Server address is required");
+    const next = normalizeServerUrl(input);
+    try {
+      const res = await fetch(`${next}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+    } catch (err) {
+      throw new Error(`Could not reach the BCIS server at ${next} (${err instanceof Error ? err.message : "no response"})`);
+    }
+    API_BASE_URL = next;
+    persistentStore.set(STORE_KEY_SERVER_URL, next);
+    return next;
   });
 
   // Login: authenticate with API, encrypt and store token, cache user

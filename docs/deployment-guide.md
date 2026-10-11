@@ -99,12 +99,16 @@ cd desktop
 cp .env.example .env
 ```
 
-Edit `.env` on **every client machine** to point at the server's LAN IP
-(not `localhost`, unless that client *is* the server machine):
+Each client needs the server's LAN address. After installing, open the app
+and on the login screen click **Server: … Change**, enter
+`http://<server-lan-ip>:3000`, then **Test & Save**. The address is
+health-checked before it is saved and is remembered on that PC, so no file
+editing is needed on installed clients. (`VITE_API_BASE_URL` in
+`desktop/.env` is still honoured as the default when running `npm run dev`.)
 
-```
-VITE_API_BASE_URL=http://<server-lan-ip>:3000
-```
+Plain `http://` is accepted only for this PC and private office-LAN
+addresses (10.x, 172.16–31.x, 192.168.x, `*.local`); any other address must
+use `https://`.
 
 ```bash
 npm install
@@ -117,8 +121,7 @@ npm run dist:win
 (NSIS installer, unsigned — no code-signing certificate is configured) and
 an unpacked copy at `desktop/release/win-unpacked/`. Run the installer on
 each client machine; it offers a destination folder and desktop/Start Menu
-shortcuts. `.env` must still be set correctly on each machine before first
-launch (see above) — the installer does not prompt for configuration.
+shortcuts. Set the server address from the login screen on first launch (see above).
 
 > **Windows `file://` gotcha, already fixed**: a packaged Electron + Vite +
 > React Router app can render a permanently blank window on Windows even
