@@ -40,6 +40,9 @@ import type {
   CollectionAreaStatus,
   InvoiceListResponse,
   InvoiceDetailResponse,
+  InvoiceAdjustmentRequest,
+  GenerateBillingRequest,
+  GenerateBillingResponse,
   InvoiceCreateResponse,
   CreateInvoiceRequest,
   BillingPeriodListResponse,
@@ -207,6 +210,11 @@ const api: BcisDesktopApi = {
     getById: (id: number): Promise<InvoiceDetailResponse> => ipcRenderer.invoke("invoices:get-by-id", id),
     create: (data: CreateInvoiceRequest): Promise<InvoiceCreateResponse> =>
       ipcRenderer.invoke("invoices:create", data),
+    finalize: (id: number): Promise<InvoiceDetailResponse> => ipcRenderer.invoke("invoices:finalize", id),
+    void: (id: number, reason: string): Promise<InvoiceDetailResponse> => ipcRenderer.invoke("invoices:void", { id, reason }),
+    adjust: (id: number, data: InvoiceAdjustmentRequest): Promise<InvoiceDetailResponse> =>
+      ipcRenderer.invoke("invoices:adjust", { id, data }),
+    markOverdue: (): Promise<{ data: { changed: number } }> => ipcRenderer.invoke("invoices:mark-overdue"),
   },
   billingPeriods: {
     getList: (params: { page?: number; pageSize?: number }): Promise<BillingPeriodListResponse> =>
@@ -216,6 +224,8 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("billing-periods:create", data),
     update: (id: number, data: UpdateBillingPeriodRequest): Promise<BillingPeriodDetailResponse> =>
       ipcRenderer.invoke("billing-periods:update", { id, data }),
+    generate: (id: number, data: GenerateBillingRequest): Promise<GenerateBillingResponse> =>
+      ipcRenderer.invoke("billing-periods:generate", { id, data }),
   },
   payments: {
     getList: (params: {

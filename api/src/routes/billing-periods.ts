@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { billingPeriods, invoices } from "../db/schema";
+import { auditLogs, billingPeriods, invoices, serviceAccounts } from "../db/schema";
+import { BillingConflictError, InvoiceInputError, createInvoiceTx } from "./invoices";
 import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
 
@@ -40,6 +41,13 @@ function validRange(start: string, end: string, due: string): string | null {
   if (due < start) return "dueDate must not be before periodStart";
   return null;
 }
+
+const generateSchema = z.object({
+  // true: create DRAFT invoices to review before finalizing.
+  asDraft: z.boolean().optional(),
+  // true: report what would be billed without writing anything.
+  dryRun: z.boolean().optional(),
+}).strict();
 
 function isConflict(err: unknown): boolean {
   let current: unknown = err;
@@ -146,5 +154,63 @@ export default async function billingPeriodRoutes(app: FastifyInstance): Promise
       if (isConflict(err)) return reply.code(409).send({ message: "A billing period with that label or date range already exists" });
       throw err;
     }
+  });
+
+  // Monthly billing run: one invoice per ACTIVE service account that has not
+  // yet been billed for this period. Each account is billed in its own
+  // transaction, so running this twice (or from two PCs at once) never
+  // produces a duplicate — the second run simply finds nothing left to bill.
+  app.post("/api/v1/billing-periods/:id/generate", { preHandler: [authenticate, requireRoles(...WRITE_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid billing period ID" });
+    const parsed = generateSchema.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ message: "Invalid generate options", issues: parsed.error.issues });
+
+    const [period] = await db.select().from(billingPeriods).where(eq(billingPeriods.id, params.data.id)).limit(1);
+    if (!period) return reply.code(404).send({ message: "Billing period not found" });
+
+    const unbilled = await db
+      .select({ id: serviceAccounts.id, serviceNumber: serviceAccounts.serviceNumber })
+      .from(serviceAccounts)
+      .leftJoin(invoices, and(eq(invoices.serviceAccountId, serviceAccounts.id), eq(invoices.billingPeriodId, period.id)))
+      .where(and(eq(serviceAccounts.status, "active"), isNull(invoices.id)))
+      .orderBy(asc(serviceAccounts.id));
+
+    if (parsed.data.dryRun) {
+      return reply.send({ data: { dryRun: true, wouldBill: unbilled.length, accounts: unbilled } });
+    }
+
+    const created: Array<{ serviceAccountId: number; invoiceId: number }> = [];
+    const skipped: Array<{ serviceAccountId: number; serviceNumber: string; reason: string }> = [];
+    for (const account of unbilled) {
+      try {
+        const invoiceId = await db.transaction((tx) =>
+          createInvoiceTx(
+            tx,
+            { serviceAccountId: account.id, billingPeriodId: period.id, asDraft: parsed.data.asDraft },
+            request.currentUser!.id,
+          ),
+        );
+        created.push({ serviceAccountId: account.id, invoiceId });
+      } catch (err) {
+        if (err instanceof BillingConflictError || isConflict(err)) {
+          skipped.push({ serviceAccountId: account.id, serviceNumber: account.serviceNumber, reason: "Already billed for this period" });
+        } else if (err instanceof InvoiceInputError) {
+          skipped.push({ serviceAccountId: account.id, serviceNumber: account.serviceNumber, reason: err.message });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    await db.insert(auditLogs).values({
+      actorUserId: request.currentUser!.id,
+      action: "billing.generate",
+      entityType: "billing_period",
+      entityId: period.id,
+      metadata: { period: period.label, asDraft: parsed.data.asDraft ?? false, created: created.length, skipped },
+    });
+
+    return reply.send({ data: { periodId: period.id, created: created.length, invoices: created, skipped } });
   });
 }

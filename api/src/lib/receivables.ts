@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { invoices, paymentAllocations, payments, serviceAccounts } from "../db/schema";
 import { formatCents, parseMoneyToCents } from "./money";
@@ -43,11 +43,13 @@ export async function getInvoiceBalances(options?: {
   subscriberId?: number;
   billingPeriodId?: number;
 }): Promise<InvoiceBalanceRow[]> {
-  const conditions = [];
+  // Drafts are not yet billed and void invoices are cancelled; neither is
+  // a receivable.
+  const conditions = [notInArray(invoices.status, ["draft", "void"])];
   if (options?.serviceAccountId !== undefined) conditions.push(eq(invoices.serviceAccountId, options.serviceAccountId));
   if (options?.subscriberId !== undefined) conditions.push(eq(serviceAccounts.subscriberId, options.subscriberId));
   if (options?.billingPeriodId !== undefined) conditions.push(eq(invoices.billingPeriodId, options.billingPeriodId));
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const where = and(...conditions);
 
   const rows = await db
     .select({

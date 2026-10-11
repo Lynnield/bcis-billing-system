@@ -577,7 +577,7 @@ export interface UpdateBillingPeriodRequest {
 }
 
 // Invoice types (matching api/src/routes/invoices.ts)
-export type InvoiceStatus = "unpaid" | "partially_paid" | "paid" | "overdue" | "void";
+export type InvoiceStatus = "draft" | "unpaid" | "partially_paid" | "paid" | "overdue" | "void" | "credited";
 
 export interface InvoiceLineItem {
   id: number;
@@ -645,6 +645,9 @@ export interface InvoiceDetail {
   dueDate: string;
   serviceAccountId: number;
   billingPeriodId: number;
+  voidReason: string | null;
+  voidedAt: string | null;
+  finalizedAt: string | null;
   createdAt: string;
   updatedAt: string;
   context: {
@@ -680,7 +683,9 @@ export interface InvoiceListResponse {
 export interface CreateInvoiceRequest {
   serviceAccountId: number;
   billingPeriodId: number;
-  invoiceNumber: string;
+  /** Omit to let the server assign the next INV- number. */
+  invoiceNumber?: string;
+  asDraft?: boolean;
   issueDate?: string;
   dueDate?: string;
   quantity?: number;
@@ -698,6 +703,28 @@ export interface CreateInvoiceRequest {
 
 export interface InvoiceCreateResponse {
   data: InvoiceDetail;
+}
+
+export interface InvoiceAdjustmentRequest {
+  type: "debit" | "credit";
+  amount: string;
+  reason: string;
+}
+
+export interface GenerateBillingRequest {
+  asDraft?: boolean;
+  dryRun?: boolean;
+}
+
+export interface GenerateBillingResponse {
+  data: {
+    periodId?: number;
+    dryRun?: boolean;
+    wouldBill?: number;
+    created?: number;
+    invoices?: Array<{ serviceAccountId: number; invoiceId: number }>;
+    skipped?: Array<{ serviceAccountId: number; serviceNumber: string; reason: string }>;
+  };
 }
 
 export interface InvoiceStatusChangeRequest {
@@ -1179,6 +1206,14 @@ export interface BcisDesktopApi {
     getById: (id: number) => Promise<InvoiceDetailResponse>;
     /** Create new invoice */
     create: (data: CreateInvoiceRequest) => Promise<InvoiceCreateResponse>;
+    /** Finalize a DRAFT invoice so it becomes billable */
+    finalize: (id: number) => Promise<InvoiceDetailResponse>;
+    /** Void an invoice with no posted payments (reason required) */
+    void: (id: number, reason: string) => Promise<InvoiceDetailResponse>;
+    /** Controlled post-issue debit/credit adjustment */
+    adjust: (id: number, data: InvoiceAdjustmentRequest) => Promise<InvoiceDetailResponse>;
+    /** Sweep past-due open invoices to OVERDUE */
+    markOverdue: () => Promise<{ data: { changed: number } }>;
   };
   billingPeriods: {
     /** Get paginated list of billing periods */
@@ -1189,6 +1224,8 @@ export interface BcisDesktopApi {
     create: (data: CreateBillingPeriodRequest) => Promise<BillingPeriodDetailResponse>;
     /** Update billing period */
     update: (id: number, data: UpdateBillingPeriodRequest) => Promise<BillingPeriodDetailResponse>;
+    /** Bill every active, not-yet-billed service account for the period */
+    generate: (id: number, data: GenerateBillingRequest) => Promise<GenerateBillingResponse>;
   };
   payments: {
     /** Get paginated list of payments */

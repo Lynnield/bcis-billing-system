@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   bigserial,
   bigint,
+  boolean,
   check,
   date,
   index,
@@ -9,6 +10,7 @@ import {
   jsonb,
   numeric,
   pgEnum,
+  pgSequence,
   pgTable,
   text,
   timestamp,
@@ -44,11 +46,13 @@ export const serviceAccountStatusEnum = pgEnum("service_account_status", [
 ]);
 
 export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "draft",
   "unpaid",
   "partially_paid",
   "paid",
   "overdue",
   "void",
+  "credited",
 ]);
 
 export const adjustmentTypeEnum = pgEnum("adjustment_type", ["debit", "credit"]);
@@ -240,6 +244,12 @@ export const billingPeriods = pgTable("billing_periods", {
   unique("billing_periods_dates_unique").on(t.periodStart, t.periodEnd),
 ]);
 
+// Server-side document numbering. Sequences never hand out a value twice,
+// even when the surrounding transaction rolls back, so a voided or failed
+// number is never reused.
+export const invoiceNumberSeq = pgSequence("invoice_number_seq", { startWith: 1000 });
+export const receiptNumberSeq = pgSequence("receipt_number_seq", { startWith: 5000 });
+
 export const invoices = pgTable("invoices", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(),
@@ -249,6 +259,12 @@ export const invoices = pgTable("invoices", {
   dueDate: date("due_date", { mode: "date" }).notNull(),
   status: invoiceStatusEnum("status").notNull().default("unpaid"),
   totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  // Void workflow: the row is kept with its issued total; these record who
+  // voided it and why, so it stays in history but leaves receivables.
+  voidReason: text("void_reason"),
+  voidedByUserId: bigint("voided_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  voidedAt: timestamp("voided_at", { withTimezone: true, mode: "date" }),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true, mode: "date" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (t) => [
@@ -279,6 +295,9 @@ export const invoiceAdjustments = pgTable("invoice_adjustments", {
   type: adjustmentTypeEnum("type").notNull(),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
   reason: text("reason").notNull(),
+  // false: entered with the invoice and already part of its issued total.
+  // true: a controlled post-issue adjustment, shown as its own ledger line.
+  postIssue: boolean("post_issue").notNull().default(false),
   createdByUserId: bigint("created_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (t) => [

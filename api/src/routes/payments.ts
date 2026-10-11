@@ -14,6 +14,7 @@ import {
 import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
 import { formatCents, parseMoneyToCents } from "../lib/money";
+import { deriveInvoiceStatus, isInvoiceOpen, refreshInvoiceStatus } from "../lib/invoice-status";
 
 const READ_ROLES = [
   ROLE_NAMES.OWNER,
@@ -79,11 +80,15 @@ function isConflict(err: unknown): boolean {
   return false;
 }
 
-function isInvoiceOpen(status: string): boolean {
-  return status === "unpaid" || status === "partially_paid" || status === "overdue";
-}
-
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Next official-receipt number from a database sequence: unique across all
+// PCs, and a number is never handed out twice even if its payment is later
+// reversed or its transaction rolls back.
+async function nextReceiptNumber(tx: Tx): Promise<string> {
+  const result = await tx.execute<{ n: string }>(sql`select nextval('receipt_number_seq')::text as n`);
+  return `OR-${result.rows[0]!.n}`;
+}
 
 // Shared oldest-first allocation algorithm used both when a non-GCash
 // payment is posted immediately and when a GCash payment is verified.
@@ -96,7 +101,7 @@ async function allocateToOpenInvoices(
   amountCents: bigint,
 ): Promise<{
   allocationsToInsert: Array<{ invoiceId: number; amount: string }>;
-  invoiceStatusUpdates: Map<number, "paid" | "partially_paid">;
+  invoiceStatusUpdates: Map<number, string>;
   remainingCents: bigint;
 }> {
   const openInvoices = await tx
@@ -109,7 +114,7 @@ async function allocateToOpenInvoices(
 
   let remaining = amountCents;
   const allocationsToInsert: Array<{ invoiceId: number; amount: string }> = [];
-  const invoiceStatusUpdates = new Map<number, "paid" | "partially_paid">();
+  const invoiceStatusUpdates = new Map<number, string>();
 
   for (const inv of candidates) {
     if (remaining <= 0n) break;
@@ -130,7 +135,10 @@ async function allocateToOpenInvoices(
     const applied = remaining < balance ? remaining : balance;
     allocationsToInsert.push({ invoiceId: inv.id, amount: formatCents(applied) });
     const newBalance = balance - applied;
-    invoiceStatusUpdates.set(inv.id, newBalance === 0n ? "paid" : "partially_paid");
+    invoiceStatusUpdates.set(
+      inv.id,
+      newBalance === 0n ? "paid" : deriveInvoiceStatus(balance + allocated, allocated + applied, inv.dueDate),
+    );
     remaining -= applied;
   }
 
@@ -234,7 +242,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
         const { allocationsToInsert, invoiceStatusUpdates, remainingCents } = isGcash
           ? {
               allocationsToInsert: [] as Array<{ invoiceId: number; amount: string }>,
-              invoiceStatusUpdates: new Map<number, "paid" | "partially_paid">(),
+              invoiceStatusUpdates: new Map<number, string>(),
               remainingCents: amountCents,
             }
           : await allocateToOpenInvoices(tx, account.id, amountCents);
@@ -246,7 +254,9 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
             method: parsed.data.method,
             amount: formatCents(amountCents),
             paymentDate: parsed.data.paymentDate ? new Date(parsed.data.paymentDate) : new Date(),
-            receiptNumber: parsed.data.receiptNumber ?? null,
+            // A receipt is issued when money is confirmed in hand; a pending
+            // GCash submission gets its number on verification instead.
+            receiptNumber: parsed.data.receiptNumber ?? (isGcash ? null : await nextReceiptNumber(tx)),
             referenceNumber: parsed.data.referenceNumber ?? null,
             proofAttachmentPath: isGcash ? null : (parsed.data.proofAttachmentPath ?? null),
             status: isGcash ? "pending" : "posted",
@@ -260,7 +270,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
             invoiceId: alloc.invoiceId,
             amount: alloc.amount,
           });
-          const newStatus = invoiceStatusUpdates.get(alloc.invoiceId)!;
+          const newStatus = invoiceStatusUpdates.get(alloc.invoiceId)! as typeof invoices.$inferSelect.status;
           await tx.update(invoices).set({ status: newStatus }).where(eq(invoices.id, alloc.invoiceId));
         }
 
@@ -365,7 +375,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
 
         const [updatedPayment] = await tx
           .update(payments)
-          .set({ status: "posted", postedAt: new Date() })
+          .set({ status: "posted", postedAt: new Date(), receiptNumber: payment.receiptNumber ?? (await nextReceiptNumber(tx)) })
           .where(eq(payments.id, payment.id))
           .returning();
 
@@ -375,7 +385,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
             invoiceId: alloc.invoiceId,
             amount: alloc.amount,
           });
-          const newStatus = invoiceStatusUpdates.get(alloc.invoiceId)!;
+          const newStatus = invoiceStatusUpdates.get(alloc.invoiceId)! as typeof invoices.$inferSelect.status;
           await tx.update(invoices).set({ status: newStatus }).where(eq(invoices.id, alloc.invoiceId));
         }
 
@@ -547,17 +557,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
         // Recalculate each affected invoice from remaining posted allocations.
         const affectedIds = [...new Set(allocations.map((a) => a.invoiceId))];
         for (const invoiceId of affectedIds) {
-          const [inv] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
-          if (!inv) continue;
-          const [allocRow] = await tx
-            .select({ total: sql<string>`coalesce(sum(${paymentAllocations.amount}), 0)::numeric(14,2)` })
-            .from(paymentAllocations)
-            .innerJoin(payments, eq(payments.id, paymentAllocations.paymentId))
-            .where(and(eq(paymentAllocations.invoiceId, invoiceId), eq(payments.status, "posted")));
-          const allocated = parseMoneyToCents(allocRow?.total ?? "0") ?? 0n;
-          const balance = (parseMoneyToCents(inv.totalAmount) ?? 0n) - allocated;
-          const newStatus = balance <= 0n ? "paid" : allocated > 0n ? "partially_paid" : "unpaid";
-          await tx.update(invoices).set({ status: newStatus }).where(eq(invoices.id, invoiceId));
+          await refreshInvoiceStatus(tx, invoiceId);
         }
 
         await tx.insert(auditLogs).values({

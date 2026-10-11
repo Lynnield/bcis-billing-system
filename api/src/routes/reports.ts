@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   auditLogs,
@@ -9,6 +9,7 @@ import {
   collectionBatchPayments,
   collectionBatches,
   collectors,
+  invoiceAdjustments,
   invoices,
   paymentAllocations,
   paymentReversals,
@@ -87,16 +88,59 @@ async function computeLedger(serviceAccountId: number): Promise<{
   // Build chronological entries: invoice debits, posted-allocation credits,
   // reversal debits for reversed payments (net-reversal effect is zero when
   // allocations were posted... they restore the balance).
+  const postIssueAdjustments = accountInvoices.length
+    ? await db
+        .select()
+        .from(invoiceAdjustments)
+        .where(and(inArray(invoiceAdjustments.invoiceId, accountInvoices.map((i) => i.id)), eq(invoiceAdjustments.postIssue, true)))
+    : [];
+
   for (const inv of accountInvoices) {
+    // Drafts are not yet billed and never appear on the ledger.
+    if (inv.status === "draft") continue;
+    const adjs = postIssueAdjustments.filter((a) => a.invoiceId === inv.id);
+    // totalAmount already includes post-issue adjustments; back them out so
+    // the invoice line shows the amount as originally issued and each
+    // adjustment appears as its own dated entry.
+    const netAdjCents = adjs.reduce(
+      (acc, a) => acc + (a.type === "debit" ? 1n : -1n) * (parseMoneyToCents(a.amount) ?? 0n),
+      0n,
+    );
+    const issuedCents = (parseMoneyToCents(inv.totalAmount) ?? 0n) - netAdjCents;
     entries.push({
       date: inv.issueDate.toISOString().slice(0, 10),
       type: "invoice",
       reference: inv.invoiceNumber,
       description: `Invoice ${inv.invoiceNumber}`,
-      debitCents: parseMoneyToCents(inv.totalAmount) ?? 0n,
+      debitCents: issuedCents,
       creditCents: 0n,
       runningBalanceCents: 0n,
     });
+    for (const a of adjs) {
+      const amt = parseMoneyToCents(a.amount) ?? 0n;
+      entries.push({
+        date: a.createdAt.toISOString().slice(0, 10),
+        type: "adjustment",
+        reference: inv.invoiceNumber,
+        description: `${a.type === "debit" ? "Debit" : "Credit"} adjustment: ${a.reason}`,
+        debitCents: a.type === "debit" ? amt : 0n,
+        creditCents: a.type === "credit" ? amt : 0n,
+        runningBalanceCents: 0n,
+      });
+    }
+    if (inv.status === "void") {
+      // A void invoice can carry no posted payments, so voiding credits
+      // back its full current total.
+      entries.push({
+        date: (inv.voidedAt ?? inv.updatedAt).toISOString().slice(0, 10),
+        type: "void",
+        reference: inv.invoiceNumber,
+        description: `Invoice ${inv.invoiceNumber} voided${inv.voidReason ? `: ${inv.voidReason}` : ""}`,
+        debitCents: 0n,
+        creditCents: parseMoneyToCents(inv.totalAmount) ?? 0n,
+        runningBalanceCents: 0n,
+      });
+    }
   }
 
   const allocations = await db
@@ -151,7 +195,7 @@ async function computeLedger(serviceAccountId: number): Promise<{
   }
 
   // Sort chronological: by date, then invoices before payments before reversals on the same day.
-  const typeOrder: Record<string, number> = { invoice: 0, payment: 1, "payment (reversed)": 1, reversal: 2 };
+  const typeOrder: Record<string, number> = { invoice: 0, adjustment: 1, payment: 2, "payment (reversed)": 2, reversal: 3, void: 4 };
   entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9)));
   let running = 0n;
   for (const e of entries) {
@@ -802,7 +846,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     const [monthInvoices] = await db
       .select({ total: sql<string>`coalesce(sum(${invoices.totalAmount}), 0)::numeric(14,2)`, count: sql<number>`count(*)::int` })
       .from(invoices)
-      .where(gte(invoices.issueDate, new Date(monthStart)));
+      .where(and(gte(invoices.issueDate, new Date(monthStart)), notInArray(invoices.status, ["draft", "void"])));
 
     const [monthPayments] = await db
       .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)::numeric(14,2)`, count: sql<number>`count(*)::int` })

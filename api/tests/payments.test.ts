@@ -59,7 +59,7 @@ async function mkUser(username: string, roleName: string) {
 async function makeInvoice(account: number, period: number, invoiceNumber: string, total: string) {
   const [inv] = await db
     .insert(invoices)
-    .values({ invoiceNumber, serviceAccountId: account, billingPeriodId: period, issueDate: new Date("2026-01-01"), dueDate: new Date("2026-01-31"), status: "unpaid", totalAmount: total })
+    .values({ invoiceNumber, serviceAccountId: account, billingPeriodId: period, issueDate: new Date("2026-01-01"), dueDate: new Date("2099-01-31"), status: "unpaid", totalAmount: total })
     .returning();
   createdInvoiceIds.push(inv!.id);
   return inv!;

@@ -7,6 +7,8 @@ import type {
   BillingPeriodDetailResponse,
   CreateBillingPeriodRequest,
   UpdateBillingPeriodRequest,
+  GenerateBillingRequest,
+  GenerateBillingResponse,
 } from "@/shared/types";
 
 export async function getBillingPeriods(params: {
@@ -26,4 +28,8 @@ export async function createBillingPeriod(data: CreateBillingPeriodRequest): Pro
 
 export async function updateBillingPeriod(id: number, data: UpdateBillingPeriodRequest): Promise<BillingPeriodDetailResponse> {
   return window.bcis.billingPeriods.update(id, data);
+}
+
+export async function generateBilling(id: number, data: GenerateBillingRequest): Promise<GenerateBillingResponse> {
+  return window.bcis.billingPeriods.generate(id, data);
 }

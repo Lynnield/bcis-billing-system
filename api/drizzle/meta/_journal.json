@@ -29,6 +29,20 @@
       "when": 1791619745887,
       "tag": "0003_add_payments_proof_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791706656431,
+      "tag": "0004_invoice_void_draft_credited",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791706731639,
+      "tag": "0005_document_number_sequences",
+      "breakpoints": true
     }
   ]
 }

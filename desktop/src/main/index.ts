@@ -33,6 +33,9 @@ import type {
   CollectorListResponse,
   InvoiceListResponse,
   InvoiceDetailResponse,
+  InvoiceAdjustmentRequest,
+  GenerateBillingRequest,
+  GenerateBillingResponse,
   InvoiceCreateResponse,
   BillingPeriodListResponse,
   BillingPeriodDetailResponse,
@@ -137,6 +140,11 @@ const IPC_COLLECTION_BATCHES_RECONCILE = "collection-batches:reconcile";
 const IPC_INVOICES_GET_LIST = "invoices:get-list";
 const IPC_INVOICES_GET_BY_ID = "invoices:get-by-id";
 const IPC_INVOICES_CREATE = "invoices:create";
+const IPC_INVOICES_FINALIZE = "invoices:finalize";
+const IPC_INVOICES_VOID = "invoices:void";
+const IPC_INVOICES_ADJUST = "invoices:adjust";
+const IPC_INVOICES_MARK_OVERDUE = "invoices:mark-overdue";
+const IPC_BILLING_PERIODS_GENERATE = "billing-periods:generate";
 const IPC_BILLING_PERIODS_GET_LIST = "billing-periods:get-list";
 const IPC_BILLING_PERIODS_GET_BY_ID = "billing-periods:get-by-id";
 const IPC_BILLING_PERIODS_CREATE = "billing-periods:create";
@@ -974,6 +982,49 @@ function registerIpcHandlers(): void {
       token,
       body: data,
     });
+  });
+
+  ipcMain.handle(IPC_INVOICES_FINALIZE, async (_event, id: unknown): Promise<InvoiceDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<InvoiceDetailResponse>(`/api/v1/invoices/${Number(id)}/finalize`, { method: "POST", token });
+  });
+
+  ipcMain.handle(IPC_INVOICES_VOID, async (_event, payload: unknown): Promise<InvoiceDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, reason } = payload as { id: number; reason: string };
+    return apiRequest<InvoiceDetailResponse>(`/api/v1/invoices/${Number(id)}/void`, { method: "POST", token, body: { reason } });
+  });
+
+  ipcMain.handle(IPC_INVOICES_ADJUST, async (_event, payload: unknown): Promise<InvoiceDetailResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: InvoiceAdjustmentRequest };
+    return apiRequest<InvoiceDetailResponse>(`/api/v1/invoices/${Number(id)}/adjustments`, { method: "POST", token, body: data });
+  });
+
+  ipcMain.handle(IPC_INVOICES_MARK_OVERDUE, async (): Promise<{ data: { changed: number } }> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    return apiRequest<{ data: { changed: number } }>("/api/v1/invoices/mark-overdue", { method: "POST", token });
+  });
+
+  ipcMain.handle(IPC_BILLING_PERIODS_GENERATE, async (_event, payload: unknown): Promise<GenerateBillingResponse> => {
+    const token = await getStoredToken();
+    if (!token) {
+      throw new Error("No valid session");
+    }
+    const { id, data } = payload as { id: number; data: GenerateBillingRequest };
+    return apiRequest<GenerateBillingResponse>(`/api/v1/billing-periods/${Number(id)}/generate`, { method: "POST", token, body: data });
   });
 
   // Billing Periods API handlers

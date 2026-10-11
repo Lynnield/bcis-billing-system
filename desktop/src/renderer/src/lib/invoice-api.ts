@@ -8,6 +8,7 @@ import type {
   InvoiceCreateResponse,
   CreateInvoiceRequest,
   InvoiceStatus,
+  InvoiceAdjustmentRequest,
 } from "@/shared/types";
 
 export async function getInvoices(params: {
@@ -28,4 +29,20 @@ export async function getInvoiceById(id: number): Promise<InvoiceDetailResponse>
 
 export async function createInvoice(data: CreateInvoiceRequest): Promise<InvoiceCreateResponse> {
   return window.bcis.invoices.create(data);
+}
+
+export async function finalizeInvoice(id: number): Promise<InvoiceDetailResponse> {
+  return window.bcis.invoices.finalize(id);
+}
+
+export async function voidInvoice(id: number, reason: string): Promise<InvoiceDetailResponse> {
+  return window.bcis.invoices.void(id, reason);
+}
+
+export async function adjustInvoice(id: number, data: InvoiceAdjustmentRequest): Promise<InvoiceDetailResponse> {
+  return window.bcis.invoices.adjust(id, data);
+}
+
+export async function markOverdueInvoices(): Promise<{ data: { changed: number } }> {
+  return window.bcis.invoices.markOverdue();
 }

@@ -51,6 +51,7 @@ export function InvoiceForm({ open, onClose, onSuccess, isLoading }: InvoiceForm
       serviceAccountId: 0,
       billingPeriodId: 0,
       invoiceNumber: "",
+      asDraft: false,
       issueDate: "",
       dueDate: "",
       quantity: 1,
@@ -73,8 +74,16 @@ export function InvoiceForm({ open, onClose, onSuccess, isLoading }: InvoiceForm
 
   const onSubmit = async (data: any) => {
     try {
+      // Blank optional fields are omitted, not sent as "" — the API rejects
+      // empty date strings and assigns the invoice number itself when absent.
       const submitData = {
-        ...data,
+        serviceAccountId: data.serviceAccountId,
+        billingPeriodId: data.billingPeriodId,
+        quantity: data.quantity,
+        ...(data.invoiceNumber?.trim() ? { invoiceNumber: data.invoiceNumber.trim() } : {}),
+        ...(data.issueDate ? { issueDate: data.issueDate } : {}),
+        ...(data.dueDate ? { dueDate: data.dueDate } : {}),
+        ...(data.asDraft ? { asDraft: true } : {}),
         additionalLineItems,
         adjustments,
       };
@@ -111,6 +120,7 @@ export function InvoiceForm({ open, onClose, onSuccess, isLoading }: InvoiceForm
         serviceAccountId: 0,
         billingPeriodId: 0,
         invoiceNumber: "",
+        asDraft: false,
         issueDate: "",
         dueDate: "",
         quantity: 1,
@@ -167,11 +177,16 @@ export function InvoiceForm({ open, onClose, onSuccess, isLoading }: InvoiceForm
         </div>
 
         <Input
-          label="Invoice Number *"
-          {...register("invoiceNumber", { required: "Invoice number is required", maxLength: 50 })}
+          label="Invoice Number"
+          {...register("invoiceNumber", { maxLength: 50 })}
           error={getErrorMessage(errors.invoiceNumber)}
-          placeholder="INV-001"
+          placeholder="Leave blank to auto-number"
         />
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" {...register("asDraft")} />
+          Save as draft (review before it is billed)
+        </label>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Input
