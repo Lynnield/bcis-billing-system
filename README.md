@@ -51,6 +51,8 @@ npm run dev
 ```bash
 cd api && npm test       # Vitest, runs only against the isolated bcis_billing_test DB
 cd desktop && npm test    # Vitest, Node environment (no DOM) — logic/type-shape tests
+cd desktop && npm run e2e  # Playwright drives the built Electron app (throwaway bcis_billing_e2e DB)
+npm run lint              # in api/ (oxlint) and desktop/ (ESLint)
 ```
 
 Never point the test suite at the `bcis_billing` development database.

@@ -5,7 +5,7 @@ description: Launch the BCIS Electron desktop app and screenshot a real window t
 
 # Verify desktop UI changes live
 
-This project has no Playwright/E2E driver installed for the desktop app. Use this
+Automated E2E lives in `desktop/e2e` (`npm run e2e`). For ad-hoc visual checks, use this
 procedure to actually look at a screen after changing it, instead of trusting
 typecheck/tests alone for anything visual.
 

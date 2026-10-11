@@ -4,8 +4,11 @@ D5 deliverable. Results for the 12 mandatory acceptance tests (lab spec §7),
 plus the required test-evidence summary and bug log (§7.1). All automated
 tests run against the isolated `bcis_billing_test` database via
 `cd api && npm test` (Vitest + Fastify `inject`, no real HTTP socket) and
-`cd desktop && npm test` (Vitest, Node environment). Last full run: 181/181
-API tests passing, 58/58 desktop tests passing.
+`cd desktop && npm test` (Vitest, Node environment). Key desktop workflows
+are also driven end to end through the real Electron app with Playwright
+(`cd desktop && npm run e2e`, against a throwaway migrated-and-seeded
+database). Last full run: **246/246 API tests, 68/68 desktop tests, 4/4
+end-to-end tests passing; lint 0 errors.**
 
 ## AT-01 — Exact payment
 
@@ -39,6 +42,10 @@ returned as `unappliedAmount` on the payment response rather than being
 discarded — it is available to apply the moment the next invoice is
 generated for that account (same oldest-first rule then applies it first).
 No value is ever lost or silently dropped.
+Also: `api/tests/search-and-preview.test.ts` → `it("reports the advance portion of an
+overpayment as unapplied")` (the cashier's allocation preview shows the same
+policy before posting), and the demo seed posts three three-month advance
+payments.
 
 ## AT-04 — Oldest-first arrears
 
@@ -81,7 +88,11 @@ transaction.
 **Test data**: Cash collected ₱20,000; remitted ₱20,000.
 **Expected**: Difference ₱0; batch may reconcile/close.
 **Result: PASS.**
-`api/tests/collection-batches.test.ts` → `it("balanced remittance")`.
+`api/tests/collection-batches.test.ts` → `it("balanced remittance")`. A
+balanced batch reconciles without an acknowledgement and is then closed
+with explicit confirmation (`it("AT-08: … closing needs confirmation")`).
+Expected cash counts **cash only**: `it("non-cash collections are summarized
+separately and never create a shortage")`.
 
 ## AT-08 — Collector shortage
 
@@ -91,6 +102,12 @@ transaction.
 `api/tests/collection-batches.test.ts` → `it("shortage")` (and `it("overage")`
 for the symmetric case). `shortage_amount`/`overage_amount` are stored
 columns, always computed and shown — never coerced to zero.
+`it("AT-08: a shortage cannot be reconciled without acknowledgement, and
+closing needs confirmation")` uses the spec's exact figures (₱20,000 collected,
+₱19,500 remitted): the ₱500.00 shortage is shown, reconciling without an
+acknowledgement and explanation is refused (409), the shortage is still
+₱500.00 after reconciliation, a Cashier cannot close (403), and closing
+requires `confirm: true`. Screenshot: `tests/screenshots/18-batch-reconciliation-shortage.png`.
 
 ## AT-09 — Concurrent users
 
@@ -122,6 +139,13 @@ Manual three-client procedure for the live demo is documented in
 `it("Cashier cannot replace roles")`. These call the route directly via
 `app.inject`, bypassing any UI, which is exactly the "even if the API is
 called directly" condition.
+Since the move to granular permissions, `api/tests/permissions.test.ts` also
+shows that revoking `payment.reverse` from a role takes effect on the next
+request (403 naming the missing permission) and that only `user.manage`
+can edit the matrix. End to end: `desktop/e2e/workflows.e2e.ts` → `"cashier
+cannot reach owner-only areas, and the server refuses them even when called
+directly"` calls the backup API through the running app's own bridge as a
+Cashier and gets a refusal.
 
 ## AT-11 — Duplicate billing
 
@@ -135,6 +159,9 @@ Enforced at two layers: the `invoices_service_account_period_unique`
 database constraint, and an in-transaction re-check before insert (so the
 concurrent case returns a clean `409`, not a raw constraint-violation
 error).
+The monthly billing run itself: `api/tests/invoice-workflows.test.ts` →
+`it("bills each active account once; a second run creates nothing for it")`
+(`POST /billing-periods/:id/generate` twice → one invoice per account).
 
 ## AT-12 — Backup/restore
 
@@ -167,28 +194,25 @@ test) specifically so this destructive scenario never touches the shared
 
 ## Required Test Evidence
 
-- **Automated test output for domain/business rules**: `api/tests/*.test.ts`
-  (181 tests) — money math, allocation, invoice state machine, suspension/
-  reconnection, settings.
-- **API/integration test results for posting flows**: same suite, run via
-  Fastify `inject` against a real PostgreSQL transaction — not mocked.
-- **E2E/manual desktop evidence**: live-clicked verification during
-  development for Backup, Reports export, Collections, Receivables,
-  Ledger/Statement of Account, Suspend/Reconnect modals, User Management,
-  and session lock, using the Windows screenshot/click technique documented
-  in `.claude/skills/verify-desktop-ui/SKILL.md`; `desktop/tests/*.test.ts`
-  (58 tests) covers IPC-wrapper correctness and role-based navigation at
-  the unit level. The GCash verify/reject flow and the full Collection
-  Batch lifecycle (create → add payment → remit with a shortage →
-  reconcile/close), previously untested live, were swept the same way —
-  see `tests/screenshots/` below.
-- **Screenshots / report evidence**: `reports-samples/` contains a real PDF
-  and XLSX exported from the running system against the seeded demo
-  dataset; `tests/screenshots/` contains real captures of the Dashboard,
-  GCash verify/reject, the Collection Batch lifecycle (including an
-  intentional shortage), and the generic payment-proof file picker, with an
-  index in `tests/screenshots/README.md`.
-- **Bug log**: below.
+- **Automated test output for domain/business rules** — `cd api && npm test`
+  (246 tests in 20 files): money math, allocation, invoice status rule and
+  states (draft/void/credited/overdue), billing runs, reversals, GCash,
+  proofs, batches, receivables, reports, permissions, lockout, backup.
+- **API/integration results for posting flows** — the same suite runs
+  through Fastify `inject` against real PostgreSQL transactions (no mocks).
+- **E2E for key desktop workflows** — `cd desktop && npm run e2e`
+  (Playwright driving the built Electron app; 4 tests: sign-in and
+  dashboard, Receive Payment end to end, GCash verification, role
+  restriction with a direct API call refused). Desktop unit tests:
+  `cd desktop && npm test` (68).
+- **Screenshots / report files showing expected balances** —
+  `tests/screenshots/` (index in its README; 10–23 come from a live sweep
+  against a freshly migrated and seeded database) and `reports-samples/`
+  (18 PDF/XLSX files exported from the running system, e.g. the period
+  Statement of Account shows opening 1,999.00 + charges 1,999.00 − payments
+  2,500.00 = closing 1,498.00).
+- **Lint** — `npm run lint` in both packages: 0 errors.
+- **Bug log** — below.
 
 ## Bug Log
 
@@ -224,3 +248,70 @@ test) specifically so this destructive scenario never touches the shared
   path before marking a UI change done (per `.claude/skills/verify-desktop-ui/SKILL.md`).
   Verified fixed by re-running the exact click sequence that originally
   crashed and confirming the Ledger/Statement/Detail views now render.
+
+### Bug 2 — Installed clients could not reach a LAN server
+
+- **Discovered**: compliance review against spec 14 ("all three client PCs
+  can connect").
+- **Root cause**: the packaged app never loads `desktop/.env`, and the main
+  process rejected plain `http://` for every host except localhost — so the
+  documented `http://<server-lan-ip>:3000` threw at start-up.
+- **Fix**: server address is a runtime setting on the login screen,
+  health-checked before saving; plain HTTP allowed only for loopback and
+  private LAN ranges (`desktop/src/main/server-url.ts`).
+- **Regression test**: `desktop/tests/server-url.test.ts`.
+
+### Bug 3 — GCash in a collection batch produced a false cash shortage
+
+- **Discovered**: reviewing the batch remittance logic against spec 3.8/4.3.
+- **Root cause**: expected remittance summed every posted payment in the
+  batch, including GCash, which never passes through the collector.
+- **Fix**: expected cash counts cash only; non-cash is summarized separately.
+- **Regression test**: `collection-batches.test.ts` → "non-cash collections
+  are summarized separately and never create a shortage".
+
+### Bug 4 — New service accounts could not be created from the desktop
+
+- **Discovered**: compliance review.
+- **Root cause**: `ServiceAccountList` passed empty arrays for subscribers,
+  plans, areas and collectors to the create form, so every dropdown was
+  empty; editing from the list also started from a partial row.
+- **Fix**: the form loads its own lookups with a subscriber type-ahead; edit
+  loads the full record first.
+- **Regression check**: live UI sweep (`tests/screenshots/13`, `22`) and the
+  API create/update tests in `service-control.test.ts`.
+
+### Bug 5 — Invoice creation and detail screens were stubs
+
+- **Discovered**: compliance review.
+- **Root cause**: "Add Invoice" and "View" on the invoice list were
+  `alert("not yet implemented")`; the existing form also sent empty date
+  strings, which the API rejects.
+- **Fix**: working invoice form (blank optional fields omitted), invoice
+  detail with finalize/adjust/void/print.
+- **Regression test**: `invoice-workflows.test.ts`; `billing-workflows.test.ts`.
+
+### Bug 6 — Reconnection fees were recorded but never billed
+
+- **Discovered**: compliance review of spec 3.10.
+- **Root cause**: `reconnection_records.fee` had no path into billing.
+- **Fix**: the next invoice picks up completed, unbilled reconnection fees
+  once (`billed_invoice_id`).
+- **Regression test**: `service-control.test.ts` → "request → technician
+  completes → fee billed on the next invoice".
+
+### Bug 7 — Exports silently truncated at 500 rows
+
+- **Discovered**: reviewing reports against the spec 4.5 data volumes.
+- **Root cause**: `.limit(500)` in the export queries with no notice.
+- **Fix**: 50,000-row cap with the truncation stated in the report subtitle.
+- **Regression test**: `management-reports.test.ts` (exports), plus report
+  totals checked to the cent.
+
+### Bug 8 — Pages opened at the previous page's scroll position
+
+- **Discovered**: live UI sweep with the Electron app.
+- **Root cause**: the document, not the content pane, scrolls; nothing reset
+  it on navigation.
+- **Fix**: `Layout` resets the document and pane on every route change.
+- **Regression check**: live sweep re-run (scroll, navigate, screenshot).

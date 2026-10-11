@@ -1,191 +1,206 @@
 # User Manual
 
-BCIS Subscription Billing and Collection System — D4 deliverable. Written for
-office staff operating the desktop client day to day. For setup/installation
-see `docs/deployment-guide.md`; for internal design see
-`docs/technical-documentation.md`.
+BCIS Subscription Billing and Collection System — deliverable D4. How to use
+the desktop application day to day. Menus you do not see are outside your
+role's permissions; ask the Owner if you need one.
 
-## 1. Logging In
+## 1. Signing in
 
-1. Launch the BCIS desktop application.
-2. Enter your username (or email) and password, then **Sign In**.
-3. Your available menu items depend on your role — see §2. If a menu item
-   you expect is missing, your account may not have the right role; ask an
-   Administrator or the Owner to check **User Management**.
-4. **Session lock**: after 15 minutes without mouse/keyboard activity, the
-   screen locks automatically. Re-enter your password to continue, or click
-   **Not you? Sign out** to switch users. You can also lock manually with
-   the lock icon next to your name in the top-right.
+1. Start **BCIS Billing**.
+2. **First time on this PC only:** below the sign-in button, check
+   *Server: …*. If it does not show the office server, click **Change**,
+   enter `http://<server-address>:3000` (ask IT), and click **Test & Save**.
+   The address is checked before it is saved and remembered on this PC.
+3. Enter your username (or email) and password, then **Sign in**.
+4. After 5 wrong passwords in a row the account locks for 15 minutes. The
+   Owner can unlock it sooner (*Administration → Users → unlock icon*).
+5. After 15 minutes without activity the screen locks; enter your password
+   to continue. Use the door icon (top right) to sign out.
+
+**Find anything quickly:** the search box at the top of every screen
+(Ctrl+K) finds a subscriber by account number, name, phone, address,
+invoice number, receipt number or GCash reference.
 
 ## 2. Roles
 
-| Role | Can do |
+| Role | Main tasks |
 |---|---|
-| Owner / Super Admin | Everything, including User Management and Backup & Restore. |
-| Administrator | Subscribers, plans, service accounts, billing, payments, collections, reports. Cannot manage users or run backups. |
-| Cashier | Search subscribers, receive payments, view balances, submit/process GCash. |
-| Collection Supervisor | Collection areas, collectors, collection batches, remittance, reports. |
-| Accounting / Auditor | Reports, GCash verification, reversals review, receivables, audit trail. |
-| Technician | Service accounts and suspension/reconnection information (read-focused). |
-| Read-only Viewer | Dashboard and reports only — no changes of any kind. |
+| Owner / Super Admin | Everything, including users, permissions, audit log and backup/restore |
+| Administrator | Subscribers, plans, service accounts, billing, collections, reports |
+| Cashier | Find subscribers, receive payments, print receipts, record GCash submissions |
+| Collection Supervisor | Collectors, areas & routes, batches, remittance, settings |
+| Accounting / Auditor | GCash verification, reversals, voids, adjustments, reports, audit log |
+| Technician | Service accounts, suspension and reconnection work |
+| Read-only Viewer | Dashboard and reports only |
 
-A hidden menu item never means "the feature doesn't exist" — it means your
-role doesn't have it. Every permission check is also enforced by the server,
-so even a direct API call from a lower-privileged account is rejected.
+The Owner can change exactly what each role may do in *Administration →
+Roles & Permissions*. The server enforces these rules on every action;
+hiding a menu item is never the safeguard.
 
-## 3. Subscriber Registration
+## 3. Subscribers and services
 
-1. **Subscribers → All Subscribers → New Subscriber** (visible to
-   Owner/Administrator).
-2. Fill in account number, name, contact info, and address. Status starts as
-   `pending` unless you set it to `active`.
-3. Save. The subscriber now appears in the list and can be searched by
-   account number, name, contact number, or address.
-4. To add an Internet/Cable/Combo subscription for this subscriber, go to
-   **Subscribers → Service Accounts → New** and select a plan. The
-   subscriber must be `active` before a service account can be created.
-5. Subscriber records are never deleted — to stop billing a subscriber,
-   change their status instead (`inactive`/`suspended`/`disconnected`). The
-   full status history is kept and visible on the subscriber's profile.
+**New subscriber:** *Subscribers → New Subscriber*. Fill in the account
+number, name, contact details, address and any notes; required fields are
+marked *. Subscribers are never deleted — set them to inactive instead.
+
+**Subscriber profile:** *Subscribers → All Subscribers* → eye icon. Tabs:
+Overview, Services, Billing, Payments, Ledger (with Statement of Account),
+Collection, Service History, Documents (uploaded proofs) and Audit.
+
+**Add a service:** profile → *Services* → **Add Service** (or *Subscribers →
+Service Accounts → New*). Choose the plan, enter a service number, and
+optionally an installation address (if different), a billing start date, a
+due day (1–28) and an account-specific rate. Leave the rate blank to bill
+the plan price.
+
+**Plans:** *Services* → a service → plans. Each plan has a code, monthly
+price, installation fee, reconnection fee and speed and/or channel count.
+Changing a price affects only invoices generated afterwards.
 
 ## 4. Billing
 
-1. **Billing & Invoices → Billing Periods**: create a period with a label
-   (e.g. "October 2026"), a start/end date, and a due date.
-2. **Billing & Invoices → Invoices → New**: pick a service account and a
-   billing period. The invoice amount is taken automatically from the
-   service account's current plan price — you cannot type a different
-   price. You may add extra line items (e.g. a reconnection fee) or
-   debit/credit adjustments with a reason.
-3. The system will not let you bill the same service account for the same
-   billing period twice — if you try, you'll get a clear "already exists"
-   message instead of a duplicate invoice.
-4. Every invoice posts a debit to that subscriber's ledger immediately; you
-   can see it right away under **Service Accounts → (account) → Ledger**.
+**Monthly billing run:** *Billing → Generate Billing*.
+1. Add the billing period if it does not exist (label, start, end, due date).
+2. Click **Generate** on the period. The window shows how many active
+   accounts are not yet billed.
+3. Optionally tick **Create as drafts** to review before billing.
+4. Click **Generate N Invoice(s)**. Running it again never creates
+   duplicates — already-billed accounts are skipped.
 
-## 5. Receiving a Payment
+The first invoice for a new account includes the plan's installation fee;
+a completed reconnection's fee is added to the next invoice.
 
-1. **Payments → Receive Payment**. Search for the subscriber or service
-   account.
-2. Enter the amount and method (Cash, GCash, Bank Transfer, Cheque, Other).
-3. For Cash/Bank Transfer/Cheque/Other, the payment posts immediately and is
-   applied **oldest unpaid invoice first**. If the amount is more than the
-   oldest invoice owes, the remainder rolls forward to the next invoice,
-   and so on; any amount left over after every open invoice is covered
-   stays as an unapplied credit (an advance payment) ready to apply to the
-   next invoice generated.
-4. For GCash, see §6 — it is held pending until verified.
-5. Once posted, click **Print Receipt** to show the clean, navigation-free
-   receipt layout and print it.
-6. **Correcting a mistake**: a posted payment is never edited or deleted.
-   Open the payment and use **Reverse**, enter a reason. The invoice
-   balances it affected are recalculated automatically, and the original
-   payment stays visible in history with a note showing it was reversed.
+**Current Billing** lists the invoices of the current period; **Invoices**
+lists all with search and status filter. Open an invoice to:
+- **Finalize** a draft (it then counts as billed);
+- **Adjust** — a credit (e.g. outage) or debit (extra charge) with a reason;
+- **Void** — with a reason; only possible when no posted payment is applied
+  (reverse those payments first);
+- **Print** the invoice.
 
-## 6. GCash Verification
+Statuses: Draft, Unpaid, Partially Paid, Paid, Overdue, Void, Credited.
+Invoices become Overdue automatically after their due date; **Mark
+Overdue** runs that check immediately.
 
-1. A customer sends proof of a GCash transfer to the company Facebook Page.
-2. A Cashier records it: **Payments → Receive Payment**, method GCash,
-   enter the GCash reference number (and attach the screenshot if the
-   proof-attachment field is available). The payment is created with
-   status **pending** — it is *not* applied to any invoice yet.
-3. **Payments → GCash Verification** shows the queue of pending
-   submissions, each with the reference number and amount. A screenshot
-   alone is evidence to review, not proof of payment by itself.
-4. An Owner, Administrator, or Accounting/Auditor opens a submission and
-   either **Verify** (posts and allocates it, oldest-first, exactly like a
-   cash payment) or **Reject** (requires a reason; the payment is cancelled
-   and nothing is allocated).
-5. The system blocks a duplicate GCash reference number outright — if the
-   same reference has already been used on a verified payment, a new
-   submission with that reference is rejected by the server.
-6. You cannot verify or reject a GCash submission you entered yourself —
-   a different authorized user must review it.
+## 5. Receiving a payment (cashier)
 
-## 7. Subscriber Ledger & Statement of Account
+*Payments → Receive Payment*:
+1. **Find account** — type the account number, name, phone, invoice or
+   receipt number; click the account.
+2. **Balance** — the outstanding and overdue amounts are shown, and the
+   amount is pre-filled with the full balance.
+3. **Payment** — enter the amount and method (Cash, GCash, Bank Transfer,
+   Cheque, Other). For non-cash methods, add the reference and attach the
+   proof file (PNG, JPEG, WEBP or PDF up to 5 MB).
+4. **Allocation preview** — shows which invoices the money will pay, oldest
+   first, and the balance afterwards. Any excess is kept as advance credit.
+5. **Post Payment** — the system assigns the official receipt number
+   (OR-…). Click **Print Receipt**, then **Next Payment**.
 
-- **Service Accounts → (account) → Ledger**: the complete chronological
-  debit (invoices) / credit (posted payments) history with a running
-  balance, exactly like a bank statement.
-- **Service Accounts → (account) → Statement of Account**: pick a date
-  range and print a clean Statement of Account for the subscriber.
+A posted payment is never edited or deleted. If it was wrong, an authorized
+user opens it (*Payment History*) and clicks **Reverse** with a reason; the
+invoices' balances are restored and both records stay visible.
 
-## 8. House-to-House Collection
+## 6. GCash verification
 
-1. **Collections → Collection Areas**: define the geographic areas (e.g.
-   "Poblacion Area").
-2. **Collections → Collectors**: add field collectors and assign each to
-   an area.
-3. **Collections → Collection Batches → New**: open a batch for a
-   collector and a date. Print the **Route Sheet** — it lists every
-   assigned account's address, current bill, arrears, and total due, in a
-   clean print layout.
-4. As the collector returns payments, add each posted Cash/GCash payment to
-   the batch.
-5. At day's end, **Remit**: enter how much Cash the collector actually
-   turned in. The system computes the difference automatically — a
-   shortage or overage is shown explicitly and is never silently treated
-   as balanced.
-6. **Reconcile** to close the batch once the shortage/overage has been
-   reviewed and confirmed. A reconciled/closed batch cannot be remitted
-   again.
+1. The cashier records a GCash payment in *Receive Payment* with method
+   **GCash**, the 13-digit reference from the customer's screenshot, and the
+   screenshot file. It is held as **pending** — nothing is applied yet.
+   A reference already used is refused.
+2. A reviewer (Accounting/Owner/Admin) opens *Payments → GCash
+   Verification*. The left pane lists pending submissions; the right pane
+   shows the screenshot, amount, reference and account. A warning appears if
+   the same image was uploaded before.
+3. Check the payment in the GCash business account, then **Verify & Post**
+   (allocates it) or **Reject** with a reason. You cannot review a
+   submission you entered yourself.
 
-## 9. Receivables & Overdue Monitoring
+## 7. Ledger and Statement of Account
 
-**Receivables** (Owner/Administrator/Accounting/Cashier) has four views:
+Profile → *Ledger*, or *Service Accounts* → an account. The ledger lists
+every charge, payment, adjustment, reversal and void in date order with a
+running balance. Click **Statement of Account**, choose **From**/**To**
+dates, and **Print Statement**: it shows the opening balance, the period's
+activity and the closing balance. *Reports* can export it as PDF/XLSX.
 
-- **Outstanding**: every invoice with a balance still owed.
-- **Overdue**: invoices past their due date, with subscriber, service,
-  area, collector, months unpaid, and total arrears.
-- **Aging**: totals bucketed into Current, 1–30, 31–60, 61–90, and 90+ days
-  overdue.
-- **Suspension Candidates**: accounts that have crossed the configured
-  suspension threshold and have not been suspended yet.
+## 8. House-to-house collection
 
-Filter any of these by collector, collection area, plan, or service type.
+**Set-up:** *Collections → Areas & Routes* and *Collectors*. Assign each
+service account to an area and collector. A collector's **route sheet**
+(Collectors → route icon) lists account, address, current bill, arrears and
+total due, ready to print.
 
-## 10. Suspension and Reconnection
+**Batch lifecycle:**
+1. *Collection Batches → New Batch* — the collector's route and amounts due
+   are captured at this moment (expected receivable).
+2. **Add Payment** for each collection recorded (status becomes *In
+   Progress*).
+3. **Submit Batch** when the collector returns; no more collections can be
+   added.
+4. **Record Remittance** — enter the cash actually handed over. Only cash is
+   compared; GCash and other non-cash collections are shown separately.
+   Any shortage or overage is calculated and kept.
+5. **Reconcile** — if there is a difference you must tick the
+   acknowledgement and write an explanation. It is never reset to balanced.
+6. **Close Batch** (Supervisor/Admin/Owner) — the final sign-off.
 
-1. Open the delinquent account: **Service Accounts → (account)**.
-2. **Suspend**: enter a reason and optional notes. The account status
-   changes to `suspended` and a suspension record (reason, effective date,
-   approver) is kept permanently, visible in **Suspension History** on
-   that account.
-3. Once the subscriber has paid, **Reconnect**: enter a reconnection fee
-   (if applicable) and assign a technician. The account returns to
-   `active`, and a reconnection record (fee, technician, request/
-   completion dates) is kept in **Reconnection History**.
-4. The configurable grace period and suspension threshold (in days) are set
-   by an Owner/Administrator under the collections settings panel on the
-   Receivables page.
+*Remittance* lists batches waiting for their cash.
+
+## 9. Receivables and overdue monitoring
+
+*Receivables*: **Outstanding** and **Overdue** invoice lists (filter by
+aging bucket), **Aging** totals (Current, 1–30, 31–60, 61–90, 90+ days — they
+add up to the outstanding total) and **Suspension Candidates**. The
+dashboard shows overdue alerts and AR aging at a glance.
+
+## 10. Suspension and reconnection
+
+Open the service account:
+- **Suspend Account** — enter the reason and notes; your name and the date
+  are recorded.
+- **Reconnect Account** — allowed only when no overdue balance remains
+  (collect payment first). The fee defaults to the plan's reconnection fee.
+  Assign a technician and **Request Reconnection**; the account stays
+  suspended until the technician (or office) clicks **Mark Completed**. Tick
+  *Reconnected now* when no field visit is needed. The Owner/Admin may
+  override an unpaid balance with a reason; this is audited.
+
+Every change appears under *Service History*. Grace period and suspension
+threshold are set in *Administration → Settings*.
 
 ## 11. Reports
 
-**Reports** lets you pick a report (Daily/Weekly/Monthly/Annual Collection,
-Payment-Method Summary, Billing vs Collection, AR Aging, Collector
-Performance, Subscriber Master List, Payment Adjustment/Reversal, Audit
-Trail, Dashboard summary) and **Export PDF** or **Export XLSX**. The file
-save dialog is handled by the desktop app; choose where to save and the
-report downloads with the same figures shown on screen.
+*Reports*. **Management reports**: collection summary (daily, weekly,
+monthly, annual, by method), billing vs collection, revenue by plan/service/
+area, subscriber master list, collector assignments, remittance, reversals/
+voids/adjustments, voided receipts, user activity and audit trail. Set the
+parameters, **Run** to view, or **Export PDF/XLSX**. **Statements &
+summaries**: dashboard summary, collection report, AR report, aging,
+collector performance, ledger and Statement of Account.
 
-## 12. Backup & Restore (Owner only)
+## 12. Administration (Owner)
 
-1. **Administration → Backup & Restore**.
-2. **Create Backup** runs a full database dump and records it with a
-   checksum.
-3. **Verify** re-checks a backup's integrity without touching the live
-   database — safe to run any time.
-4. **Restore** replaces the live database with a backup's contents. This is
-   destructive and requires an explicit confirmation step — use it only
-   when you intend to discard everything written after that backup.
+- **Users** — create users, assign roles, reset passwords, unlock, deactivate.
+- **Roles & Permissions** — tick which roles hold each permission; **Save**.
+- **Audit Log** — every recorded change with filters; click a row for the
+  old/new values. Audit records cannot be edited.
+- **Settings** — grace period and suspension threshold.
+- **Backup & Restore** — **Create Backup** (database plus uploaded proofs),
+  **Verify** (re-checks the dump and every proof file), **Restore**
+  (replaces the live data; requires confirmation — anything entered after
+  the backup is lost).
 
 ## 13. Troubleshooting
 
-| Symptom | What to check |
+| Symptom | What to do |
 |---|---|
-| "Failed to load..." error on any screen | The API server may be stopped, or you lost network connectivity to it. Confirm with IT that the API/PostgreSQL host is reachable on the LAN. |
-| A menu item you need is missing | Your role doesn't include it — ask an Owner/Administrator to check or change your roles under User Management. |
-| "An invoice already exists for this service account and billing period" | That account was already billed for that period — this is a deliberate duplicate-billing guard, not a bug. |
-| A GCash submission is rejected | Open the reason recorded against it — common causes are a mismatched reference number or an amount that doesn't match the proof. |
-| You need to undo a payment | Never try to "edit" it — use **Reverse** with a reason instead; this preserves the audit trail. |
-| Session suddenly locked | Normal after 15 minutes idle — re-enter your password, or sign out if it's not you. |
+| "Could not reach the BCIS server" at sign-in | Check the network cable/Wi-Fi and the *Server* address on the sign-in screen; ask IT whether the server PC is on. |
+| "Too many failed sign-in attempts" | Wait 15 minutes or ask the Owner to unlock your account. |
+| A menu item is missing | Your role does not have that permission — ask the Owner. |
+| "An invoice already exists for this service account and billing period" | It is already billed for that period (duplicate protection). |
+| "Duplicate receipt number or GCash reference" | That GCash reference was already submitted — look it up with the search box. |
+| Cannot void an invoice | A posted payment is applied to it; reverse the payment first. |
+| Cannot reconnect | An overdue balance remains; receive the payment first. |
+| Wrong payment posted | Never edit it — use **Reverse** with a reason. |
+| Batch will not reconcile | There is a shortage/overage: tick the acknowledgement and write the explanation. |
+| Screen locked | Normal after 15 minutes idle; enter your password. |
