@@ -20,7 +20,7 @@ import {
   subscribers,
 } from "../db/schema";
 import { authenticate } from "../lib/auth";
-import { requirePermission } from "../lib/permissions";
+import { hasPermission, requirePermission } from "../lib/permissions";
 import { AGING_BUCKETS, bucketFor, daysOverdue, getInvoiceBalances, todayDateString } from "../lib/receivables";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { buildPdfBuffer, buildXlsxBuffer, exportContentType, exportFilename, type TabularReport } from "../lib/report-export";
@@ -856,8 +856,106 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       })
       .from(collectionBatches);
 
+    // Spec 4.3 dashboard panels. Financial detail only for roles that may
+    // see payments (not the Technician).
+    let panels: Record<string, unknown> = {};
+    if (hasPermission(request, "payment.view")) {
+      const sixMonthsAgo = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 6, 1));
+      const billedByMonth = await db
+        .select({ month: sql<string>`to_char(${invoices.issueDate}, 'YYYY-MM')`, total: sql<string>`sum(${invoices.totalAmount})::numeric(14,2)` })
+        .from(invoices)
+        .where(and(gte(invoices.issueDate, sixMonthsAgo), notInArray(invoices.status, ["draft", "void"])))
+        .groupBy(sql`to_char(${invoices.issueDate}, 'YYYY-MM')`);
+      const collectedByMonth = await db
+        .select({ month: sql<string>`to_char(${payments.paymentDate}, 'YYYY-MM')`, total: sql<string>`sum(${payments.amount})::numeric(14,2)` })
+        .from(payments)
+        .where(and(gte(payments.paymentDate, sixMonthsAgo), eq(payments.status, "posted")))
+        .groupBy(sql`to_char(${payments.paymentDate}, 'YYYY-MM')`);
+      const months = [...new Set([...billedByMonth, ...collectedByMonth].map((r) => r.month))].sort();
+
+      const methodMix = await db
+        .select({ method: payments.method, total: sql<string>`sum(${payments.amount})::numeric(14,2)`, count: sql<number>`count(*)::int` })
+        .from(payments)
+        .where(and(gte(payments.paymentDate, new Date(monthStart)), eq(payments.status, "posted")))
+        .groupBy(payments.method);
+
+      const collectorPerformance = await db
+        .select({
+          collectorId: collectors.id,
+          collectorName: collectors.fullName,
+          batches: sql<number>`count(distinct ${collectionBatches.id})::int`,
+          collected: sql<string>`coalesce(sum(${payments.amount}) filter (where ${payments.status} = 'posted'), 0)::numeric(14,2)`,
+          accounts: sql<number>`count(distinct ${payments.serviceAccountId})::int`,
+        })
+        .from(collectors)
+        .leftJoin(collectionBatches, and(eq(collectionBatches.collectorId, collectors.id), gte(collectionBatches.batchDate, new Date(monthStart))))
+        .leftJoin(collectionBatchPayments, eq(collectionBatchPayments.batchId, collectionBatches.id))
+        .leftJoin(payments, eq(payments.id, collectionBatchPayments.paymentId))
+        .where(eq(collectors.status, "active"))
+        .groupBy(collectors.id, collectors.fullName)
+        .orderBy(collectors.fullName);
+      const shortages = await db
+        .select({ collectorId: collectionBatches.collectorId, shortage: sql<string>`sum(${collectionBatches.shortageAmount})::numeric(14,2)` })
+        .from(collectionBatches)
+        .where(gte(collectionBatches.batchDate, new Date(monthStart)))
+        .groupBy(collectionBatches.collectorId);
+
+      // Oldest overdue balance per account, worst first.
+      const overdueByAccount = new Map<number, { cents: bigint; days: number }>();
+      for (const r of arRows) {
+        const days = daysOverdue(r.dueDate);
+        if (r.balanceCents <= 0n || days <= 0) continue;
+        const cur = overdueByAccount.get(r.serviceAccountId) ?? { cents: 0n, days: 0 };
+        overdueByAccount.set(r.serviceAccountId, { cents: cur.cents + r.balanceCents, days: Math.max(cur.days, days) });
+      }
+      const worst = [...overdueByAccount.entries()].sort((a, b) => b[1].days - a[1].days).slice(0, 8);
+      const worstAccounts = worst.length
+        ? await db
+            .select({ id: serviceAccounts.id, serviceNumber: serviceAccounts.serviceNumber, name: sql<string>`${subscribers.firstName} || ' ' || ${subscribers.lastName}` })
+            .from(serviceAccounts)
+            .innerJoin(subscribers, eq(subscribers.id, serviceAccounts.subscriberId))
+            .where(inArray(serviceAccounts.id, worst.map(([id]) => id)))
+        : [];
+
+      const recentPayments = await db
+        .select({
+          id: payments.id,
+          receiptNumber: payments.receiptNumber,
+          amount: payments.amount,
+          method: payments.method,
+          status: payments.status,
+          postedAt: payments.postedAt,
+          serviceNumber: serviceAccounts.serviceNumber,
+          name: sql<string>`${subscribers.firstName} || ' ' || ${subscribers.lastName}`,
+        })
+        .from(payments)
+        .innerJoin(serviceAccounts, eq(serviceAccounts.id, payments.serviceAccountId))
+        .innerJoin(subscribers, eq(subscribers.id, serviceAccounts.subscriberId))
+        .orderBy(desc(payments.id))
+        .limit(8);
+
+      panels = {
+        billingVsCollection: months.map((m) => ({
+          month: m,
+          billed: billedByMonth.find((r) => r.month === m)?.total ?? "0.00",
+          collected: collectedByMonth.find((r) => r.month === m)?.total ?? "0.00",
+        })),
+        paymentMethodMix: methodMix,
+        collectorPerformance: collectorPerformance.map((c) => ({
+          ...c,
+          shortage: shortages.find((s) => s.collectorId === c.collectorId)?.shortage ?? "0.00",
+        })),
+        overdueAlerts: worst.map(([id, v]) => {
+          const a = worstAccounts.find((x) => x.id === id);
+          return { serviceAccountId: id, serviceNumber: a?.serviceNumber ?? String(id), name: a?.name ?? "", daysOverdue: v.days, overdueBalance: formatCents(v.cents) };
+        }),
+        recentPayments,
+      };
+    }
+
     return reply.send({
       data: {
+        ...panels,
         activeSubscribers: activeSubscribers[0]?.count ?? 0,
         activeServiceAccounts: activeAccounts[0]?.count ?? 0,
         pendingInstallations: pendingInstalls[0]?.count ?? 0,

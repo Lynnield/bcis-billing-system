@@ -121,6 +121,12 @@ export interface DashboardSummaryResponse {
     remittanceOverageTotal: string;
     suspensionCandidateCount: number;
     agingBuckets: Record<string, string>;
+    // Spec 4.3 panels; omitted for roles without payment.view (Technician).
+    billingVsCollection?: Array<{ month: string; billed: string; collected: string }>;
+    paymentMethodMix?: Array<{ method: string; total: string; count: number }>;
+    collectorPerformance?: Array<{ collectorId: number; collectorName: string; batches: number; collected: string; accounts: number; shortage: string }>;
+    overdueAlerts?: Array<{ serviceAccountId: number; serviceNumber: string; name: string; daysOverdue: number; overdueBalance: string }>;
+    recentPayments?: Array<{ id: number; receiptNumber: string | null; amount: string; method: string; status: string; postedAt: string; serviceNumber: string; name: string }>;
   };
   meta: { today: string; monthStart: string };
 }
@@ -974,6 +980,19 @@ export interface AccountReceivableSummary {
   invoices: Array<{ invoiceId: number; invoiceNumber: string; status: string; totalAmount: string; allocated: string; balance: string; dueDate: string }>;
 }
 
+export interface SubscriberDocument {
+  id: number;
+  paymentId: number;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+  receiptNumber: string | null;
+  method: string;
+  amount: string;
+}
+
 export interface PaymentProofSummary {
   id: number;
   originalName: string;
@@ -1455,6 +1474,7 @@ export interface BcisDesktopApi {
       page?: number;
       pageSize?: number;
       serviceAccountId?: number;
+      subscriberId?: number;
       status?: PaymentStatus;
     }) => Promise<PaymentListResponse>;
     /** Get payment by ID with allocations, reversal, and GCash detail */
@@ -1553,5 +1573,7 @@ export interface BcisDesktopApi {
     getPreview: (id: number) => Promise<PaymentProofPreview>;
     /** Open a proof (e.g. a PDF) in the system viewer. */
     open: (id: number) => Promise<void>;
+    /** All proofs attached to one subscriber's payments. */
+    listBySubscriber: (subscriberId: number) => Promise<{ data: SubscriberDocument[] }>;
   };
 }

@@ -1,367 +1,303 @@
-import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useNavigate } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { KPICard } from "@/components/ui/KPICard";
-import { getDashboardSummary, getReceivablesReport, getCollectionsReport } from "@/lib/dashboard-api";
-import { Users, DollarSign, AlertTriangle, TrendingUp, CreditCard, Receipt } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { getDashboardSummary } from "@/lib/dashboard-api";
+import { AlertTriangle, DollarSign, FileText, Receipt, RefreshCw, Users } from "lucide-react";
 
-interface KPIData {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  variant?: "default" | "positive" | "negative" | "warning";
-  description?: string;
-}
+const AGING = [
+  { key: "current", label: "Current", color: "var(--color-primary)" },
+  { key: "1-30", label: "1–30 days", color: "var(--color-warning)" },
+  { key: "31-60", label: "31–60 days", color: "var(--color-warning)" },
+  { key: "61-90", label: "61–90 days", color: "var(--color-destructive)" },
+  { key: "90+", label: "90+ days", color: "var(--color-destructive)" },
+];
 
-interface AgingBucketRecord {
-  [bucket: string]: string;
-}
+const METHOD_LABEL: Record<string, string> = { cash: "Cash", gcash: "GCash", bank_transfer: "Bank Transfer", cheque: "Cheque", other: "Other" };
 
+const TOOLTIP_STYLE = {
+  background: "var(--color-card)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "var(--radius-md)",
+  fontSize: 12,
+};
+const AXIS_TICK = { fontSize: 12, fill: "var(--color-muted-foreground)" };
+const peso = (v: string) => `₱${Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const monthLabel = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", year: "2-digit", timeZone: "UTC" });
+
+/** Spec 4.3 dashboard: compact KPIs, billing vs collection, method mix, AR aging, collector performance, overdue alerts, recent payments. */
 export function Dashboard() {
-  const { data: summary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useQuery({
+  const navigate = useNavigate();
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["dashboard", "summary"],
     queryFn: getDashboardSummary,
     staleTime: 30_000,
     retry: 1,
   });
-
-  const { data: receivables, isLoading: receivablesLoading } = useQuery({
-    queryKey: ["dashboard", "receivables"],
-    queryFn: getReceivablesReport,
-    staleTime: 30_000,
-    retry: 1,
-  });
-
-  const { data: collections, isLoading: collectionsLoading } = useQuery({
-    queryKey: ["dashboard", "collections"],
-    queryFn: getCollectionsReport,
-    staleTime: 30_000,
-    retry: 1,
-  });
-
-  const isLoading = summaryLoading || receivablesLoading;
-  const error = summaryError;
-
-  const AGING_BUCKET_LABELS: Record<string, string> = {
-    current: "Current",
-    "1-30": "1–30 days",
-    "31-60": "31–60 days",
-    "61-90": "61–90 days",
-    "90+": "90+ days",
-  };
-  const AGING_BUCKET_COLOR: Record<string, string> = {
-    current: "var(--color-primary)",
-    "1-30": "var(--color-warning)",
-    "31-60": "var(--color-warning)",
-    "61-90": "var(--color-destructive)",
-    "90+": "var(--color-destructive)",
-  };
-  const AGING_BUCKET_ORDER = ["current", "1-30", "31-60", "61-90", "90+"];
-
-  const agingChartData = React.useMemo(() => {
-    const buckets = receivables?.data?.agingBuckets as AgingBucketRecord | undefined;
-    if (!buckets) return [];
-    return AGING_BUCKET_ORDER.filter((key) => key in buckets).map((key) => ({
-      bucket: key,
-      label: AGING_BUCKET_LABELS[key] ?? key,
-      amount: Number(buckets[key]) || 0,
-      display: buckets[key],
-      color: AGING_BUCKET_COLOR[key] ?? "var(--color-muted-foreground)",
-    }));
-  }, [receivables?.data]);
-
-  const PAYMENT_METHOD_LABELS: Record<string, string> = {
-    cash: "Cash",
-    gcash: "GCash",
-    bank_transfer: "Bank Transfer",
-    cheque: "Cheque",
-    other: "Other",
-  };
-  const PAYMENT_METHOD_COLORS = [
-    "var(--color-primary)",
-    "var(--color-ring)",
-    "var(--color-success)",
-    "var(--color-warning)",
-    "var(--color-muted-foreground)",
-  ];
-
-  const paymentMethodChartData = React.useMemo(() => {
-    const rows = collections?.data?.byPaymentMethod ?? [];
-    return rows
-      .filter((r) => Number(r.total) > 0)
-      .map((r, i) => ({
-        method: r.method,
-        label: PAYMENT_METHOD_LABELS[r.method] ?? r.method,
-        value: Number(r.total) || 0,
-        display: r.total,
-        count: r.count,
-        color: PAYMENT_METHOD_COLORS[i % PAYMENT_METHOD_COLORS.length],
-      }));
-  }, [collections?.data]);
-
-  const kpiCards: KPIData[] = React.useMemo(() => {
-    if (!summary?.data) return [];
-
-    const data = summary.data;
-    return [
-      {
-        label: "Active Subscribers",
-        value: data.activeSubscribers.toLocaleString(),
-        icon: <Users className="h-5 w-5" />,
-        variant: "default",
-        description: `${data.activeServiceAccounts} active service accounts`,
-      },
-      {
-        label: "Total Outstanding AR",
-        value: data.totalOutstandingAr,
-        icon: <DollarSign className="h-5 w-5" />,
-        variant: "negative",
-        description: `${data.overdueInvoiceCount} invoices overdue`,
-      },
-      {
-        label: "Overdue Accounts",
-        value: data.totalOverdueAr,
-        icon: <AlertTriangle className="h-5 w-5" />,
-        variant: "warning",
-        description: `${data.suspensionCandidateCount} suspension candidates`,
-      },
-      {
-        label: "Monthly Collections",
-        value: data.currentMonthPostedCollectionTotal,
-        icon: <Receipt className="h-5 w-5" />,
-        variant: "positive",
-        description: `${data.currentMonthPaymentCount} payments posted`,
-      },
-    ];
-  }, [summary?.data]);
+  const d = data?.data;
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold">Dashboard</h2>
-            <p className="text-muted-foreground">Loading key metrics...</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="h-4 bg-muted rounded w-3/4 mb-4" />
-                <div className="h-8 bg-muted rounded w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="grid animate-pulse gap-4 md:grid-cols-3 lg:grid-cols-5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Card key={i}>
+            <CardContent className="p-6">
+              <div className="mb-4 h-4 w-3/4 rounded bg-muted" />
+              <div className="h-8 w-1/2 rounded bg-muted" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
 
-  if (error) {
+  if (error || !d) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold">Dashboard</h2>
-            <p className="text-muted-foreground">Overview of key billing and collection metrics</p>
-          </div>
+      <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+        <AlertTriangle className="h-6 w-6 flex-shrink-0 text-destructive" />
+        <div className="flex-1">
+          <p className="font-medium text-destructive">Failed to load dashboard data</p>
+          <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
         </div>
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-6 w-6 text-destructive flex-shrink-0" />
-            <div>
-              <p className="font-medium text-destructive">Failed to load dashboard data</p>
-              <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
-            </div>
-          </div>
-          <button onClick={() => refetchSummary()} className="ml-auto px-4 py-2 bg-destructive text-white rounded-md hover:bg-destructive/90">
-            Retry
-          </button>
-        </div>
+        <Button variant="outline" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }
+
+  const billingData = (d.billingVsCollection ?? []).map((r) => ({ month: monthLabel(r.month), billed: Number(r.billed), collected: Number(r.collected), billedText: r.billed, collectedText: r.collected }));
+  const agingData = AGING.map((b) => ({ ...b, amount: Number(d.agingBuckets[b.key] ?? 0), display: d.agingBuckets[b.key] ?? "0.00" }));
+  const methodTotal = (d.paymentMethodMix ?? []).reduce((t, m) => t + Number(m.total), 0);
+  const methods = [...(d.paymentMethodMix ?? [])].sort((a, b) => Number(b.total) - Number(a.total));
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold">Dashboard</h2>
-          <p className="text-muted-foreground">Overview of key billing and collection metrics</p>
+          <p className="text-muted-foreground">As of {data!.meta.today}</p>
         </div>
-        <button
-          onClick={() => refetchSummary()}
-          disabled={summaryLoading}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-        >
-          {summaryLoading ? "Refreshing..." : "Refresh"}
-        </button>
+        <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {kpiCards.map((kpi) => (
-          <KPICard
-            key={kpi.label}
-            title={kpi.label}
-            value={kpi.value}
-            icon={kpi.icon}
-            variant={kpi.variant}
-            description={kpi.description}
-          />
-        ))}
+      {/* 4–6 compact KPIs */}
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+        <KPICard title="Active Subscribers" value={d.activeSubscribers.toLocaleString()} icon={<Users className="h-5 w-5" />} description={`${d.activeServiceAccounts} active services · ${d.pendingInstallations} pending install`} />
+        <KPICard title="Outstanding AR" value={peso(d.totalOutstandingAr)} icon={<DollarSign className="h-5 w-5" />} variant="negative" description={`${d.overdueInvoiceCount} overdue invoices`} />
+        <KPICard title="Overdue AR" value={peso(d.totalOverdueAr)} icon={<AlertTriangle className="h-5 w-5" />} variant="warning" description={`${d.suspensionCandidateCount} accounts for follow-up`} />
+        <KPICard title="Billed This Month" value={peso(d.currentMonthInvoiceTotal)} icon={<FileText className="h-5 w-5" />} description={`${d.openCollectionBatches} open collection batches`} />
+        <KPICard title="Collected This Month" value={peso(d.currentMonthPostedCollectionTotal)} icon={<Receipt className="h-5 w-5" />} variant="positive" description={`${d.currentMonthPaymentCount} posted payments`} />
       </div>
 
-      {/* Additional Metrics Row */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Installations</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary?.data?.pendingInstallations ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Awaiting field installation</p>
-          </CardContent>
-        </Card>
+      {d.billingVsCollection && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Billing vs Collection</CardTitle>
+              <div className="flex gap-4 text-xs text-muted-foreground" aria-label="Legend">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--chart-series-1)" }} aria-hidden="true" />
+                  Billed
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--chart-series-2)" }} aria-hidden="true" />
+                  Collected
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {billingData.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">No billing in the last six months</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={billingData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }} barGap={2}>
+                    <CartesianGrid vertical={false} stroke="var(--color-border)" strokeOpacity={0.6} />
+                    <XAxis dataKey="month" tickLine={false} axisLine={{ stroke: "var(--color-border)" }} tick={AXIS_TICK} />
+                    <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} tickFormatter={(v: number) => v.toLocaleString()} width={64} />
+                    <Tooltip
+                      cursor={{ fill: "var(--color-muted)" }}
+                      contentStyle={TOOLTIP_STYLE}
+                      formatter={(_v, name, item) => [peso(name === "billed" ? item.payload.billedText : item.payload.collectedText), name === "billed" ? "Billed" : "Collected"]}
+                    />
+                    <Bar dataKey="billed" fill="var(--chart-series-1)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="collected" fill="var(--chart-series-2)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Open Collection Batches</CardTitle>
-            <Receipt className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary?.data?.openCollectionBatches ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Batches awaiting remittance</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Payment Methods — This Month</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {methods.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">No posted payments this month</p>
+              ) : (
+                <ul className="space-y-3">
+                  {methods.map((m) => (
+                    <li key={m.method}>
+                      <div className="flex justify-between text-sm">
+                        <span>{METHOD_LABEL[m.method] ?? m.method}</span>
+                        <span className="tabular-nums font-medium">{peso(m.total)}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-muted" aria-hidden="true">
+                        <div className="h-1.5 rounded-full" style={{ width: `${methodTotal ? (Number(m.total) / methodTotal) * 100 : 0}%`, background: "var(--chart-series-1)" }} />
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{m.count} payment(s)</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Remittance Shortages</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{summary?.data?.remittanceShortageTotal ?? "0.00"}</div>
-            <p className="text-xs text-muted-foreground">Total shortage across all batches</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Remittance Overages</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{summary?.data?.remittanceOverageTotal ?? "0.00"}</div>
-            <p className="text-xs text-muted-foreground">Total overage across all batches</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Aging & Payment Method Charts */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">AR Aging</CardTitle>
-            <p className="text-xs text-muted-foreground">Outstanding balance by days overdue</p>
           </CardHeader>
           <CardContent>
-            {agingChartData.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-12 text-center">No outstanding balances</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={agingChartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={{ stroke: "var(--color-border)" }}
-                    tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
-                    tickFormatter={(v: number) => v.toLocaleString()}
-                    width={56}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--color-muted)" }}
-                    contentStyle={{
-                      background: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "var(--radius-md)",
-                      fontSize: 12,
-                    }}
-                    formatter={(_value, _name, item) => [item.payload.display, "Outstanding"]}
-                  />
-                  <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56}>
-                    {agingChartData.map((entry) => (
-                      <Cell key={entry.bucket} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={agingData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="var(--color-border)" strokeOpacity={0.6} />
+                <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "var(--color-border)" }} tick={AXIS_TICK} />
+                <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} tickFormatter={(v: number) => v.toLocaleString()} width={64} />
+                <Tooltip cursor={{ fill: "var(--color-muted)" }} contentStyle={TOOLTIP_STYLE} formatter={(_v, _n, item) => [peso(item.payload.display), "Outstanding"]} />
+                <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                  {agingData.map((e) => (
+                    <Cell key={e.key} fill={e.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Payment Method Mix</CardTitle>
-            <p className="text-xs text-muted-foreground">All-time posted payments</p>
-          </CardHeader>
-          <CardContent>
-            {collectionsLoading ? (
-              <p className="text-sm text-muted-foreground py-12 text-center">Loading...</p>
-            ) : paymentMethodChartData.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-12 text-center">No posted payments yet</p>
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={paymentMethodChartData}
-                      dataKey="value"
-                      nameKey="label"
-                      innerRadius={55}
-                      outerRadius={80}
-                      paddingAngle={2}
-                      strokeWidth={0}
-                    >
-                      {paymentMethodChartData.map((entry) => (
-                        <Cell key={entry.method} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: "var(--radius-md)",
-                        fontSize: 12,
-                      }}
-                      formatter={(_value, _name, item) => [item.payload.display, item.payload.label]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <ul className="space-y-1.5 mt-2">
-                  {paymentMethodChartData.map((entry) => (
-                    <li key={entry.method} className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-muted-foreground">
-                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} aria-hidden="true" />
-                        {entry.label}
-                      </span>
-                      <span className="tabular-nums font-medium">{entry.display}</span>
+        {d.overdueAlerts && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Overdue Alerts</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/receivables/overdue")}>
+                View all
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {d.overdueAlerts.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">No overdue accounts</p>
+              ) : (
+                <ul className="divide-y text-sm">
+                  {d.overdueAlerts.map((a) => (
+                    <li key={a.serviceAccountId}>
+                      <button className="flex w-full items-center justify-between gap-2 py-2 text-left hover:bg-muted/40" onClick={() => navigate(`/service-accounts/${a.serviceAccountId}`)}>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{a.name}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{a.serviceNumber}</span>
+                        </span>
+                        <span className="text-right">
+                          <span className="block tabular-nums font-medium">{peso(a.overdueBalance)}</span>
+                          <Badge variant={a.daysOverdue > 60 ? "destructive" : "warning"}>{a.daysOverdue} days</Badge>
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ul>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {d.collectorPerformance && d.recentPayments && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Collector Performance — This Month</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Collector</TableHead>
+                    <TableHead className="text-right">Batches</TableHead>
+                    <TableHead className="text-right">Accounts</TableHead>
+                    <TableHead className="text-right">Collected</TableHead>
+                    <TableHead className="text-right">Shortage</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {d.collectorPerformance.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                        No active collectors
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    d.collectorPerformance.map((c) => (
+                      <TableRow key={c.collectorId}>
+                        <TableCell>{c.collectorName}</TableCell>
+                        <TableCell className="text-right tabular-nums">{c.batches}</TableCell>
+                        <TableCell className="text-right tabular-nums">{c.accounts}</TableCell>
+                        <TableCell className="text-right tabular-nums">{peso(c.collected)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${c.shortage !== "0.00" ? "text-destructive" : ""}`}>{peso(c.shortage)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Recent Payments</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/payments")}>
+                View all
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Receipt</TableHead>
+                    <TableHead>Subscriber</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {d.recentPayments.map((p) => (
+                    <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/payments/${p.id}`)}>
+                      <TableCell className="font-mono text-xs">{p.receiptNumber ?? "—"}</TableCell>
+                      <TableCell className="max-w-[160px] truncate">{p.name}</TableCell>
+                      <TableCell>
+                        {METHOD_LABEL[p.method] ?? p.method}
+                        {p.status !== "posted" && (
+                          <Badge variant={p.status === "pending" ? "warning" : "secondary"} className="ml-1">
+                            {p.status}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{peso(p.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

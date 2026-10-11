@@ -35,6 +35,7 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  SubscriberDocument,
   PermissionMatrix,
   ReconnectionRecord,
   ServiceHistoryEntry,
@@ -458,6 +459,12 @@ function registerIpcHandlers(): void {
       token,
       body: { permissions },
     });
+  });
+
+  ipcMain.handle("payment-proofs:list-by-subscriber", async (_event, id: unknown): Promise<{ data: SubscriberDocument[] }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: SubscriberDocument[] }>(`/api/v1/payment-proofs?subscriberId=${Number(id)}`, { method: "GET", token });
   });
 
   ipcMain.handle("search:query", async (_event, q: unknown): Promise<{ data: SearchHit[] }> => {
@@ -1239,12 +1246,14 @@ function registerIpcHandlers(): void {
       page?: number;
       pageSize?: number;
       serviceAccountId?: number;
+      subscriberId?: number;
       status?: PaymentStatus;
     };
     const query = new URLSearchParams();
     if (p.page) query.set("page", String(p.page));
     if (p.pageSize) query.set("pageSize", String(p.pageSize));
     if (p.serviceAccountId) query.set("serviceAccountId", String(p.serviceAccountId));
+    if (p.subscriberId) query.set("subscriberId", String(p.subscriberId));
     if (p.status) query.set("status", p.status);
     return apiRequest<PaymentListResponse>(`/api/v1/payments?${query.toString()}`, {
       method: "GET",

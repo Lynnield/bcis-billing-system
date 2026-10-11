@@ -41,6 +41,7 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  SubscriberDocument,
   PermissionMatrix,
   ReconnectionRecord,
   ServiceHistoryEntry,
@@ -258,6 +259,7 @@ const api: BcisDesktopApi = {
       page?: number;
       pageSize?: number;
       serviceAccountId?: number;
+      subscriberId?: number;
       status?: PaymentStatus;
     }): Promise<PaymentListResponse> => ipcRenderer.invoke("payments:get-list", params),
     getById: (id: number): Promise<PaymentDetailResponse> => ipcRenderer.invoke("payments:get-by-id", id),
@@ -331,6 +333,8 @@ const api: BcisDesktopApi = {
     upload: (): Promise<PaymentProofUploadResult | null> => ipcRenderer.invoke("payment-proofs:upload"),
     getPreview: (id: number): Promise<PaymentProofPreview> => ipcRenderer.invoke("payment-proofs:get-preview", id),
     open: (id: number): Promise<void> => ipcRenderer.invoke("payment-proofs:open", id),
+    listBySubscriber: (subscriberId: number): Promise<{ data: SubscriberDocument[] }> =>
+      ipcRenderer.invoke("payment-proofs:list-by-subscriber", subscriberId),
   },
 };
 

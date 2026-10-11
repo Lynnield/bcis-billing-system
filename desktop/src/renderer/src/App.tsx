@@ -30,6 +30,7 @@ import { ReceivePayment } from "@/components/payments/ReceivePayment";
 import { PaymentDetail } from "@/components/payments/PaymentDetail";
 import { InvoiceDetail } from "@/components/invoices/InvoiceDetail";
 import { ServiceAccountDetail } from "@/components/service-accounts/ServiceAccountDetail";
+import { SubscriberDetail } from "@/components/subscribers/SubscriberDetail";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { AuditLogPage } from "@/components/audit/AuditLogPage";
 import { PermissionsPage } from "@/components/users/PermissionsPage";
@@ -105,6 +106,11 @@ function PaymentRoute() {
   return <PaymentDetail key={id} paymentId={Number(id)} onBack={useBack()} />;
 }
 
+function SubscriberRoute() {
+  const { id } = useParams();
+  return <SubscriberDetail key={id} subscriberId={Number(id)} onBack={useBack()} />;
+}
+
 function AppContent() {
   const { isAuthenticated, isLoading, isLocked } = useAuth();
 
@@ -132,6 +138,7 @@ function AppContent() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="subscribers" element={<SubscriberList />} />
           <Route path="subscribers/new" element={<SubscriberList key="new" openCreate />} />
+          <Route path="subscribers/:id" element={<SubscriberRoute />} />
           <Route path="service-accounts" element={<ServiceAccountList />} />
           <Route path="services" element={<ServiceList />} />
           <Route path="services/:serviceId/plans" element={<PlansRoute />} />

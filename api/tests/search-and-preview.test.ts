@@ -155,3 +155,20 @@ describe("allocation preview (spec 4.3)", () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe("subscriber profile data (spec 4.3)", () => {
+  it("filters payments by subscriber", async () => {
+    const res = await app.inject({ method: "GET", url: `/api/v1/payments?subscriberId=${subscriberId}`, headers: auth("cashier") });
+    expect(res.statusCode).toBe(200);
+    const list = res.json().data as Array<{ serviceAccountId: number }>;
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((p) => p.serviceAccountId === accountId)).toBe(true);
+  });
+
+  it("lists a subscriber's documents and refuses deletion with 405", async () => {
+    const docs = await app.inject({ method: "GET", url: `/api/v1/payment-proofs?subscriberId=${subscriberId}`, headers: auth("cashier") });
+    expect(docs.statusCode).toBe(200);
+    expect(Array.isArray(docs.json().data)).toBe(true);
+    expect((await app.inject({ method: "DELETE", url: `/api/v1/subscribers/${subscriberId}`, headers: auth("cashier") })).statusCode).toBe(403);
+  });
+});

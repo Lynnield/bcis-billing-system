@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { subscribers, subscriberStatusHistory, users } from "../db/schema";
+import { auditLogs, subscribers, subscriberStatusHistory, users } from "../db/schema";
 import { authenticate } from "../lib/auth";
 import { requirePermission } from "../lib/permissions";
 
@@ -181,6 +181,13 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
             changedByUserId: request.currentUser!.id,
             note: "Subscriber created",
           });
+          await tx.insert(auditLogs).values({
+            actorUserId: request.currentUser!.id,
+            action: "subscriber.create",
+            entityType: "subscriber",
+            entityId: row!.id,
+            metadata: { new: parsed.data },
+          });
 
           return row!;
         });
@@ -211,15 +218,25 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
         return reply.code(400).send({ message: "No fields to update" });
       }
 
+      const [before] = await db.select().from(subscribers).where(eq(subscribers.id, params.data.id)).limit(1);
+      if (!before) {
+        return reply.code(404).send({ message: "Subscriber not found" });
+      }
       const [updated] = await db
         .update(subscribers)
         .set(parsed.data)
         .where(eq(subscribers.id, params.data.id))
         .returning();
-
-      if (!updated) {
-        return reply.code(404).send({ message: "Subscriber not found" });
-      }
+      await db.insert(auditLogs).values({
+        actorUserId: request.currentUser!.id,
+        action: "subscriber.update",
+        entityType: "subscriber",
+        entityId: before.id,
+        metadata: {
+          old: Object.fromEntries(Object.keys(parsed.data).map((k) => [k, (before as Record<string, unknown>)[k]])),
+          new: parsed.data,
+        },
+      });
       return reply.send({ data: updated });
     },
   );
@@ -227,11 +244,12 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
   app.delete(
     "/api/v1/subscribers/:id",
     { preHandler: [authenticate, requirePermission("subscriber.manage")] },
-    async () => {
-      return {
+    async (_request, reply) => {
+      // Spec 3.2: historical subscriber accounts are never deleted.
+      return reply.code(405).send({
         message:
           "Subscribers cannot be deleted because historical financial records depend on them. Use PATCH /api/v1/subscribers/:id/status to deactivate.",
-      };
+      });
     },
   );
 
@@ -275,6 +293,13 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
             newStatus: parsed.data.status,
             changedByUserId: request.currentUser!.id,
             note: parsed.data.reason ?? null,
+          });
+          await tx.insert(auditLogs).values({
+            actorUserId: request.currentUser!.id,
+            action: "subscriber.status_change",
+            entityType: "subscriber",
+            entityId: current.id,
+            metadata: { previousStatus: current.status, newStatus: parsed.data.status, reason: parsed.data.reason ?? null },
           });
 
           return { updated: updated! };

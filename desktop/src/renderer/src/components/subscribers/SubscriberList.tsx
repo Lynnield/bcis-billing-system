@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +13,7 @@ import {
   Search,
   Plus,
   Eye,
+  Pencil,
   Loader2,
 } from "lucide-react";
 import { getSubscribers } from "@/lib/subscriber-api";
@@ -36,6 +38,7 @@ const statusBadgeVariant: Record<SubscriberStatus, "default" | "success" | "warn
 
 export function SubscriberList({ openCreate = false }: { openCreate?: boolean } = {}) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { } = useToast();
 
   const [page, setPage] = React.useState(1);
@@ -252,10 +255,20 @@ export function SubscriberList({ openCreate = false }: { openCreate?: boolean } 
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => handleEdit(subscriber)}
-                        aria-label={`Edit ${subscriber.accountNumber}`}
+                        onClick={() => navigate(`/subscribers/${subscriber.id}`)}
+                        aria-label={`View ${subscriber.accountNumber}`}
+                        title="Open profile"
                       >
                         <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleEdit(subscriber)}
+                        aria-label={`Edit ${subscriber.accountNumber}`}
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>

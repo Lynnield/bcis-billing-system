@@ -40,6 +40,9 @@
   --border: #e2e8f0;
   --input: #cbd5e1;
   --ring: #2563eb; /* Accent Blue */
+  /* Chart series (validated: lightness, chroma, CVD, contrast) */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
   --radius: 0.5rem;
 }
 
@@ -67,6 +70,8 @@
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.14);
   --ring: #60a5fa;
+  --chart-series-1: #3987e5;
+  --chart-series-2: #d95926;
 }
 
 @theme inline {

@@ -96,3 +96,15 @@ describe("granular permissions (spec 4.4)", () => {
     expect((await app.inject({ method: "GET", url: "/api/v1/permissions", headers: auth("admin") })).statusCode).toBe(200);
   });
 });
+
+describe("dashboard panels (spec 4.3)", () => {
+  it("includes billing vs collection, method mix, collector performance, overdue alerts and recent payments for financial roles only", async () => {
+    const acct = (await app.inject({ method: "GET", url: "/api/v1/reports/dashboard", headers: auth("acct") })).json().data;
+    for (const k of ["billingVsCollection", "paymentMethodMix", "collectorPerformance", "overdueAlerts", "recentPayments"]) {
+      expect(Array.isArray(acct[k]), k).toBe(true);
+    }
+    const tech = (await app.inject({ method: "GET", url: "/api/v1/reports/dashboard", headers: auth("tech") })).json().data;
+    expect(tech.recentPayments).toBeUndefined();
+    expect(tech.activeSubscribers).toBeTypeOf("number");
+  });
+});

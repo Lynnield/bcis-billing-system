@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   auditLogs,
@@ -139,13 +139,17 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
       serviceAccountId: z.coerce.number().int().positive().optional(),
+      subscriberId: z.coerce.number().int().positive().optional(),
       status: z.enum(["pending", "posted", "reversed", "cancelled"]).optional(),
     }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ message: "Invalid query parameters" });
-    const { page, pageSize, serviceAccountId, status } = query.data;
+    const { page, pageSize, serviceAccountId, subscriberId, status } = query.data;
 
     const conditions = [];
     if (serviceAccountId) conditions.push(eq(payments.serviceAccountId, serviceAccountId));
+    if (subscriberId) {
+      conditions.push(inArray(payments.serviceAccountId, db.select({ id: serviceAccounts.id }).from(serviceAccounts).where(eq(serviceAccounts.subscriberId, subscriberId))));
+    }
     if (status) conditions.push(eq(payments.status, status));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 

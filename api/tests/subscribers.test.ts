@@ -201,7 +201,7 @@ describe("subscribers CRUD", () => {
       url: `/api/v1/subscribers/${createdSubscriberIds[0]}`,
       headers: { authorization: `Bearer ${tokens.owner}` },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(405);
     expect(res.json().message).toContain("cannot be deleted");
   });
 });

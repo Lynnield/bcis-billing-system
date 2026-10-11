@@ -17,6 +17,7 @@ export async function getPayments(params: {
   page?: number;
   pageSize?: number;
   serviceAccountId?: number;
+  subscriberId?: number;
   status?: PaymentStatus;
 }): Promise<PaymentListResponse> {
   return window.bcis.payments.getList(params);

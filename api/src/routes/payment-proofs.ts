@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "../db";
-import { auditLogs, paymentProofs } from "../db/schema";
+import { auditLogs, paymentProofs, payments, serviceAccounts } from "../db/schema";
 import { authenticate } from "../lib/auth";
 import { requirePermission } from "../lib/permissions";
 import {
@@ -78,6 +78,31 @@ export default async function paymentProofRoutes(app: FastifyInstance): Promise<
       return reply.code(201).send({ data: toDto(row!), duplicates });
     },
   );
+
+  // Documents on file for one subscriber (spec 4.3 subscriber profile).
+  app.get("/api/v1/payment-proofs", { preHandler: [authenticate, requirePermission("payment_proof.view")] }, async (request, reply) => {
+    const q = z.object({ subscriberId: z.coerce.number().int().positive() }).safeParse(request.query);
+    if (!q.success) return reply.code(400).send({ message: "subscriberId is required" });
+    const rows = await db
+      .select({
+        id: paymentProofs.id,
+        paymentId: paymentProofs.paymentId,
+        originalName: paymentProofs.originalName,
+        mimeType: paymentProofs.mimeType,
+        sizeBytes: paymentProofs.sizeBytes,
+        sha256: paymentProofs.sha256,
+        createdAt: paymentProofs.createdAt,
+        receiptNumber: payments.receiptNumber,
+        method: payments.method,
+        amount: payments.amount,
+      })
+      .from(paymentProofs)
+      .innerJoin(payments, eq(payments.id, paymentProofs.paymentId))
+      .innerJoin(serviceAccounts, eq(serviceAccounts.id, payments.serviceAccountId))
+      .where(eq(serviceAccounts.subscriberId, q.data.subscriberId))
+      .orderBy(desc(paymentProofs.createdAt));
+    return reply.send({ data: rows });
+  });
 
   app.get("/api/v1/payment-proofs/:id", { preHandler: [authenticate, requirePermission("payment_proof.view")] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
