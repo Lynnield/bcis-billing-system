@@ -367,6 +367,27 @@ export const gcashPaymentDetails = pgTable("gcash_payment_details", {
   index("gcash_payment_details_verification_status_idx").on(t.verificationStatus),
 ]);
 
+// Uploaded proof-of-payment files (GCash screenshots, deposit slips, cheque
+// photos). The file lives under ATTACHMENTS_DIR with a server-generated name;
+// the client-supplied name is kept for display only and never used as a path.
+// payment_id is null between upload and the payment being recorded.
+export const paymentProofs = pgTable("payment_proofs", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  paymentId: bigint("payment_id", { mode: "number" }).references(() => payments.id, { onDelete: "restrict" }),
+  storedName: varchar("stored_name", { length: 100 }).notNull(),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  uploadedByUserId: bigint("uploaded_by_user_id", { mode: "number" }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("payment_proofs_stored_name_unique").on(t.storedName),
+  index("payment_proofs_payment_id_idx").on(t.paymentId),
+  index("payment_proofs_sha256_idx").on(t.sha256),
+  check("payment_proofs_size_positive", sql`${t.sizeBytes} > 0`),
+]);
+
 export const paymentAllocations = pgTable("payment_allocations", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   paymentId: bigint("payment_id", { mode: "number" }).notNull().references(() => payments.id, { onDelete: "restrict" }),

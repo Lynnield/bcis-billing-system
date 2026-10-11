@@ -8,6 +8,9 @@ const envSchema = z.object({
   // Where database dumps are written/read. Kept outside the web root; never
   // served by the API itself.
   BACKUP_DIR: z.string().min(1).default("./backups"),
+  // Uploaded payment proofs. Like backups, kept outside any web root and
+  // only ever read back through the authenticated /payment-proofs routes.
+  ATTACHMENTS_DIR: z.string().min(1).default("./attachments"),
 });
 
 export const env = envSchema.parse(process.env);

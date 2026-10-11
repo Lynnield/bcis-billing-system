@@ -15,6 +15,9 @@ import {
   runPgRestore,
   runPgRestoreList,
   sha256File,
+  backupAttachments,
+  restoreAttachments,
+  verifyAttachments,
 } from "../lib/backup";
 
 // Only the Owner role has backup/restore per the role matrix (3.1): this is
@@ -44,6 +47,7 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
       await runPgDump(conn, filePath);
       const { size } = await stat(filePath);
       const checksum = await sha256File(filePath);
+      const attachmentCount = await backupAttachments(dir, filename);
 
       const [record] = await db
         .insert(backupHistory)
@@ -61,10 +65,10 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
         action: "backup.create",
         entityType: "backup_history",
         entityId: record!.id,
-        metadata: { filename, sizeBytes: size, checksumSha256: checksum },
+        metadata: { filename, sizeBytes: size, checksumSha256: checksum, attachmentCount },
       });
 
-      return reply.code(201).send({ data: record });
+      return reply.code(201).send({ data: record, attachmentCount });
     } catch (err) {
       request.log.error({ err }, "pg_dump failed");
       return reply.code(500).send({ message: "Backup failed. Check server logs for details." });
@@ -91,6 +95,7 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
       // Confirms the dump's internal structure is readable without touching
       // any live database.
       await runPgRestoreList(filePath);
+      const attachmentCount = await verifyAttachments(dir, record.filename);
 
       const [updated] = await db
         .update(backupHistory)
@@ -103,10 +108,10 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
         action: "backup.verify",
         entityType: "backup_history",
         entityId: record.id,
-        metadata: { filename: record.filename },
+        metadata: { filename: record.filename, attachmentCount },
       });
 
-      return reply.send({ data: updated });
+      return reply.send({ data: updated, attachmentCount });
     } catch (err) {
       if (err instanceof BackupNotFoundError) return reply.code(404).send({ message: "Backup not found" });
       request.log.error({ err }, "Backup verification failed");
@@ -138,6 +143,7 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
 
       const conn = parseConnectionParams(env.DATABASE_URL);
       await runPgRestore(conn, filePath);
+      const attachmentsRestored = await restoreAttachments(dir, record.filename);
 
       const [updated] = await db
         .update(backupHistory)
@@ -150,10 +156,10 @@ export default async function backupRoutes(app: FastifyInstance): Promise<void> 
         action: "backup.restore",
         entityType: "backup_history",
         entityId: record.id,
-        metadata: { filename: record.filename },
+        metadata: { filename: record.filename, attachmentsRestored },
       });
 
-      return reply.send({ data: updated });
+      return reply.send({ data: updated, attachmentsRestored });
     } catch (err) {
       if (err instanceof BackupNotFoundError) return reply.code(404).send({ message: "Backup not found" });
       if (err instanceof BackupStateError) return reply.code(409).send({ message: err.message });

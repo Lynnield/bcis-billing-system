@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { constants as fsConstants, createReadStream } from "node:fs";
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import { env } from "../config/env";
 
@@ -76,4 +77,96 @@ export async function sha256File(filePath: string): Promise<string> {
     stream.on("end", () => resolve(hash.digest("hex")));
     stream.on("error", reject);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Attachment (payment proof) backup. Proof files are immutable and uniquely
+// named, so each backup mirrors any new files into <BACKUP_DIR>/attachments/
+// and writes a per-backup manifest of every file (name + SHA-256) that
+// existed at that moment. Verify re-hashes the mirrored copies against the
+// manifest; restore copies back any manifest file missing from
+// ATTACHMENTS_DIR.
+// ---------------------------------------------------------------------------
+
+interface AttachmentManifest {
+  createdAt: string;
+  files: Array<{ name: string; sha256: string; sizeBytes: number }>;
+}
+
+const STORED_NAME = /^[0-9a-f-]{36}\.(png|jpg|webp|pdf)$/;
+
+export function attachmentManifestName(dumpFilename: string): string {
+  return dumpFilename.replace(/\.dump$/, ".attachments.json");
+}
+
+function mirrorDir(backupDir: string): string {
+  return path.join(backupDir, "attachments");
+}
+
+async function listStoredFiles(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir)).filter((n) => STORED_NAME.test(n));
+  } catch {
+    return [];
+  }
+}
+
+export async function backupAttachments(backupDir: string, dumpFilename: string): Promise<number> {
+  const source = path.resolve(env.ATTACHMENTS_DIR);
+  const mirror = mirrorDir(backupDir);
+  await mkdir(mirror, { recursive: true });
+  const manifest: AttachmentManifest = { createdAt: new Date().toISOString(), files: [] };
+  for (const name of await listStoredFiles(source)) {
+    const target = path.join(mirror, name);
+    try {
+      await copyFile(path.join(source, name), target, fsConstants.COPYFILE_EXCL);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    const { size } = await stat(target);
+    manifest.files.push({ name, sha256: await sha256File(target), sizeBytes: size });
+  }
+  await writeFile(backupFilePath(backupDir, attachmentManifestName(dumpFilename)), JSON.stringify(manifest, null, 2));
+  return manifest.files.length;
+}
+
+async function readManifest(backupDir: string, dumpFilename: string): Promise<AttachmentManifest | null> {
+  try {
+    const raw = await readFile(backupFilePath(backupDir, attachmentManifestName(dumpFilename)), "utf8");
+    const parsed = JSON.parse(raw) as AttachmentManifest;
+    for (const f of parsed.files) if (!STORED_NAME.test(f.name)) throw new Error(`Invalid file name in manifest: ${f.name}`);
+    return parsed;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // backup taken before attachments existed
+    throw err;
+  }
+}
+
+/** Throws if any mirrored attachment is missing or altered. Returns the count checked. */
+export async function verifyAttachments(backupDir: string, dumpFilename: string): Promise<number> {
+  const manifest = await readManifest(backupDir, dumpFilename);
+  if (!manifest) return 0;
+  for (const f of manifest.files) {
+    const actual = await sha256File(path.join(mirrorDir(backupDir), f.name)).catch(() => null);
+    if (actual !== f.sha256) throw new Error(`Attachment ${f.name} is missing or altered in the backup`);
+  }
+  return manifest.files.length;
+}
+
+/** Copies back every manifest file missing from ATTACHMENTS_DIR. Returns the count restored. */
+export async function restoreAttachments(backupDir: string, dumpFilename: string): Promise<number> {
+  const manifest = await readManifest(backupDir, dumpFilename);
+  if (!manifest) return 0;
+  const target = path.resolve(env.ATTACHMENTS_DIR);
+  await mkdir(target, { recursive: true });
+  let restored = 0;
+  for (const f of manifest.files) {
+    try {
+      await copyFile(path.join(mirrorDir(backupDir), f.name), path.join(target, f.name), fsConstants.COPYFILE_EXCL);
+      restored += 1;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
+  return restored;
 }

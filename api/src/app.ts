@@ -13,11 +13,14 @@ import serviceAccountRoutes from "./routes/service-accounts";
 import billingPeriodRoutes from "./routes/billing-periods";
 import invoiceRoutes from "./routes/invoices";
 import paymentRoutes from "./routes/payments";
+import paymentProofRoutes from "./routes/payment-proofs";
 import collectionBatchRoutes from "./routes/collection-batches";
 import receivableRoutes from "./routes/receivables";
 import reportRoutes from "./routes/reports";
 import backupRoutes from "./routes/backup";
 import settingsRoutes from "./routes/settings";
+import searchRoutes from "./routes/search";
+import auditRoutes from "./routes/audit";
 import type { AuthUser } from "./lib/auth";
 
 declare module "fastify" {
@@ -49,11 +52,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(billingPeriodRoutes);
   await app.register(invoiceRoutes);
   await app.register(paymentRoutes);
+  await app.register(paymentProofRoutes);
   await app.register(collectionBatchRoutes);
   await app.register(receivableRoutes);
   await app.register(reportRoutes);
   await app.register(backupRoutes);
   await app.register(settingsRoutes);
+  await app.register(searchRoutes);
+  await app.register(auditRoutes);
 
   return app;
 }

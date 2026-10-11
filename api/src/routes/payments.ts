@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   auditLogs,
   gcashPaymentDetails,
   invoices,
   paymentAllocations,
+  paymentProofs,
   paymentReversals,
   payments,
   serviceAccounts,
@@ -15,6 +16,7 @@ import { authenticate, requireRoles } from "../lib/auth";
 import { ROLE_NAMES } from "../lib/roles";
 import { formatCents, parseMoneyToCents } from "../lib/money";
 import { deriveInvoiceStatus, isInvoiceOpen, refreshInvoiceStatus } from "../lib/invoice-status";
+import { getInvoiceBalances } from "../lib/receivables";
 
 const READ_ROLES = [
   ROLE_NAMES.OWNER,
@@ -50,10 +52,13 @@ const createPaymentSchema = z.object({
   // Non-GCash proof-of-payment reference only; GCash payments carry their
   // own proofAttachmentPath inside the gcash object below.
   proofAttachmentPath: z.string().trim().max(500).optional(),
+  // An uploaded file from POST /payment-proofs (preferred over a path).
+  proofId: z.number().int().positive().optional(),
   gcash: z
     .object({
       gcashReferenceNumber: z.string().trim().min(1).max(100),
       proofAttachmentPath: z.string().trim().max(500).optional(),
+      proofId: z.number().int().positive().optional(),
     })
     .strict()
     .optional(),
@@ -178,6 +183,51 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
+  // Read-only preview of how an amount would be applied (spec 4.3 Receive
+  // Payment). Mirrors allocateToOpenInvoices: open invoices oldest issue
+  // date first, posted-payment allocations as the balance basis. Nothing is
+  // written; the real allocation is recomputed inside the posting
+  // transaction, so a concurrent payment can never be double-applied.
+  app.get("/api/v1/payments/allocation-preview", { preHandler: [authenticate, requireRoles(...POST_ROLES)] }, async (request, reply) => {
+    const query = z.object({ serviceAccountId: z.coerce.number().int().positive(), amount: moneyString }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ message: "serviceAccountId and a valid amount are required" });
+    const amountCents = parseMoneyToCents(query.data.amount);
+    if (amountCents === null || amountCents <= 0n) return reply.code(400).send({ message: "Amount must be positive" });
+
+    const rows = (await getInvoiceBalances({ serviceAccountId: query.data.serviceAccountId }))
+      .filter((r) => isInvoiceOpen(r.status) && r.balanceCents > 0n)
+      .sort((a, b) => a.issueDate.getTime() - b.issueDate.getTime() || a.invoiceId - b.invoiceId);
+
+    let remaining = amountCents;
+    let balanceBefore = 0n;
+    const lines = rows.map((r) => {
+      balanceBefore += r.balanceCents;
+      const applied = remaining < r.balanceCents ? remaining : r.balanceCents;
+      remaining -= applied;
+      const after = r.balanceCents - applied;
+      return {
+        invoiceId: r.invoiceId,
+        invoiceNumber: r.invoiceNumber,
+        dueDate: r.dueDate,
+        balance: formatCents(r.balanceCents),
+        applied: formatCents(applied),
+        remainingBalance: formatCents(after),
+        statusAfter: after === 0n ? "paid" : applied > 0n ? deriveInvoiceStatus(r.balanceCents + (parseMoneyToCents(r.allocated) ?? 0n), (parseMoneyToCents(r.allocated) ?? 0n) + applied, r.dueDate) : r.status,
+      };
+    });
+
+    return reply.send({
+      data: {
+        amount: formatCents(amountCents),
+        balanceBefore: formatCents(balanceBefore),
+        balanceAfter: formatCents(balanceBefore - (amountCents - remaining)),
+        allocations: lines,
+        // Kept on the account as an advance, applied to the next invoices.
+        unapplied: formatCents(remaining),
+      },
+    });
+  });
+
   app.get("/api/v1/payments/:id", { preHandler: [authenticate, requireRoles(...READ_ROLES)] }, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ message: "Invalid payment ID" });
@@ -188,6 +238,27 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     const allocations = await db.select().from(paymentAllocations).where(eq(paymentAllocations.paymentId, payment.id));
     const [reversal] = await db.select().from(paymentReversals).where(eq(paymentReversals.paymentId, payment.id)).limit(1);
     const [gcash] = await db.select().from(gcashPaymentDetails).where(eq(gcashPaymentDetails.paymentId, payment.id)).limit(1);
+    const proofs = await db
+      .select({
+        id: paymentProofs.id,
+        originalName: paymentProofs.originalName,
+        mimeType: paymentProofs.mimeType,
+        sizeBytes: paymentProofs.sizeBytes,
+        sha256: paymentProofs.sha256,
+        createdAt: paymentProofs.createdAt,
+      })
+      .from(paymentProofs)
+      .where(eq(paymentProofs.paymentId, payment.id));
+    // Same file bytes attached to another payment is a strong duplicate-
+    // submission signal for the GCash reviewer (spec 3.7 step 3).
+    const proofsWithDuplicates = [];
+    for (const proof of proofs) {
+      const dupes = await db
+        .select({ proofId: paymentProofs.id, paymentId: paymentProofs.paymentId })
+        .from(paymentProofs)
+        .where(and(eq(paymentProofs.sha256, proof.sha256), ne(paymentProofs.id, proof.id)));
+      proofsWithDuplicates.push({ ...proof, duplicates: dupes });
+    }
 
     const allocatedCents = allocations.reduce((acc, a) => acc + (parseMoneyToCents(a.amount) ?? 0n), 0n);
     const unappliedCents = (parseMoneyToCents(payment.amount) ?? 0n) - allocatedCents;
@@ -198,6 +269,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
         allocations,
         reversal: reversal ?? null,
         gcash: gcash ?? null,
+        proofs: proofsWithDuplicates,
         unappliedAmount: formatCents(unappliedCents < 0n ? 0n : unappliedCents),
       },
     });
@@ -214,9 +286,10 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
     if (parsed.data.method === "gcash" && !parsed.data.gcash) {
       return reply.code(400).send({ message: "gcash.gcashReferenceNumber is required for GCash payments" });
     }
-    if (parsed.data.method === "gcash" && parsed.data.proofAttachmentPath) {
-      return reply.code(400).send({ message: "Use gcash.proofAttachmentPath for GCash payments" });
+    if (parsed.data.method === "gcash" && (parsed.data.proofAttachmentPath || parsed.data.proofId)) {
+      return reply.code(400).send({ message: "Use gcash.proofId / gcash.proofAttachmentPath for GCash payments" });
     }
+    const proofId = parsed.data.method === "gcash" ? parsed.data.gcash?.proofId : parsed.data.proofId;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -274,6 +347,13 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
           await tx.update(invoices).set({ status: newStatus }).where(eq(invoices.id, alloc.invoiceId));
         }
 
+        if (proofId !== undefined) {
+          const [proof] = await tx.select().from(paymentProofs).where(eq(paymentProofs.id, proofId)).for("update").limit(1);
+          if (!proof) throw new PaymentInputError("Uploaded proof not found");
+          if (proof.paymentId !== null) throw new PaymentInputError("That proof file is already attached to another payment");
+          await tx.update(paymentProofs).set({ paymentId: payment!.id }).where(eq(paymentProofs.id, proof.id));
+        }
+
         if (isGcash && parsed.data.gcash) {
           await tx.insert(gcashPaymentDetails).values({
             paymentId: payment!.id,
@@ -294,6 +374,7 @@ export default async function paymentRoutes(app: FastifyInstance): Promise<void>
             serviceAccountId: account.id,
             unappliedAmount: formatCents(remainingCents),
             allocations: allocationsToInsert,
+            proofId: proofId ?? null,
           },
         });
 

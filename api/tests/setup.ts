@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 try {
   process.loadEnvFile(".env");
 } catch {
@@ -16,6 +19,8 @@ if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = sourceUrl.replace(/\/[^/?]+(\?|$)/, "/bcis_billing_test$1");
 }
 process.env.JWT_SECRET = "test-jwt-secret-not-for-production";
+// Uploaded proofs from tests go to a throwaway folder, never ./attachments.
+process.env.ATTACHMENTS_DIR = join(tmpdir(), "bcis-test-attachments");
 
 declare global {
   // eslint-disable-next-line no-var

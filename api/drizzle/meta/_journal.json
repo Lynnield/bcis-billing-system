@@ -50,6 +50,13 @@
       "when": 1791707366512,
       "tag": "0006_collection_batch_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791707791905,
+      "tag": "0007_payment_proofs",
+      "breakpoints": true
     }
   ]
 }
