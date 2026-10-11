@@ -278,6 +278,7 @@ const api: BcisDesktopApi = {
       ipcRenderer.invoke("users:update-roles", { id, data }),
     resetPassword: (id: number, data: ResetPasswordRequest): Promise<{ data: { userId: number } }> =>
       ipcRenderer.invoke("users:reset-password", { id, data }),
+    unlock: (id: number): Promise<{ data: { userId: number } }> => ipcRenderer.invoke("users:unlock", id),
   },
   settings: {
     getCollections: (): Promise<CollectionsSettingsResponse> => ipcRenderer.invoke("settings:get-collections"),

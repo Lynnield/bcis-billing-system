@@ -381,6 +381,12 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_GET_SERVER_URL, (): string => API_BASE_URL);
 
+  ipcMain.handle("users:unlock", async (_event, id: unknown): Promise<{ data: { userId: number } }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: { userId: number } }>(`/api/v1/users/${Number(id)}/unlock`, { method: "POST", token });
+  });
+
   ipcMain.handle("audit:get-list", async (_event, params: unknown): Promise<AuditLogListResponse> => {
     const token = await getStoredToken();
     if (!token) throw new Error("No valid session");
@@ -471,6 +477,10 @@ function registerIpcHandlers(): void {
 
   // Logout: clear all stored auth data
   ipcMain.handle(IPC_AUTH_LOGOUT, async (): Promise<void> => {
+    // Best effort: record the sign-out for the user-activity report. Never
+    // block logging out on the server being reachable.
+    const token = await getStoredToken().catch(() => null);
+    if (token) await apiRequest("/api/v1/auth/logout", { method: "POST", token }).catch(() => undefined);
     persistentStore.delete(STORE_KEY_TOKEN);
     deleteFromMemory(STORE_KEY_USER);
   });

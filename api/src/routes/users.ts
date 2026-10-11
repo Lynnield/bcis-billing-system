@@ -50,6 +50,8 @@ async function getUserWithRoles(id: number) {
       fullName: users.fullName,
       status: users.status,
       lastLoginAt: users.lastLoginAt,
+      lockedUntil: users.lockedUntil,
+      failedLoginCount: users.failedLoginCount,
       createdAt: users.createdAt,
       roleId: roles.id,
       roleName: roles.name,
@@ -68,6 +70,8 @@ async function getUserWithRoles(id: number) {
     fullName: first.fullName,
     status: first.status,
     lastLoginAt: first.lastLoginAt,
+    lockedUntil: first.lockedUntil,
+    failedLoginCount: first.failedLoginCount,
     createdAt: first.createdAt,
     roles: rows.filter((r) => r.roleId !== null).map((r) => ({ id: r.roleId!, name: r.roleName! })),
   };
@@ -94,6 +98,8 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
           fullName: users.fullName,
           status: users.status,
           roleName: roles.name,
+          lastLoginAt: users.lastLoginAt,
+          lockedUntil: users.lockedUntil,
           createdAt: users.createdAt,
         })
         .from(users)
@@ -111,6 +117,9 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
             fullName: row.fullName,
             status: row.status,
             roles: [] as string[],
+            lastLoginAt: row.lastLoginAt,
+            // Only report a lock that is still in force.
+            lockedUntil: row.lockedUntil && row.lockedUntil > new Date() ? row.lockedUntil : null,
             createdAt: row.createdAt,
           };
           byUser.set(row.id, entry);
@@ -258,7 +267,8 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) return reply.code(404).send({ message: "User not found" });
 
     const passwordHash = await hashPassword(parsed.data.password);
-    await db.update(users).set({ passwordHash }).where(eq(users.id, params.data.id));
+    // A reset also clears any failed-login lock.
+    await db.update(users).set({ passwordHash, failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, params.data.id));
     await db.insert(auditLogs).values({
       actorUserId: request.currentUser!.id,
       action: "user.reset_password",
@@ -268,5 +278,22 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.send({ data: { userId: params.data.id } });
+  });
+
+  app.post("/api/v1/users/:id/unlock", { preHandler: [authenticate, requireRoles(...MANAGE_ROLES)] }, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ message: "Invalid user ID" });
+    const [existing] = await db.select({ id: users.id, lockedUntil: users.lockedUntil, failedLoginCount: users.failedLoginCount }).from(users).where(eq(users.id, params.data.id)).limit(1);
+    if (!existing) return reply.code(404).send({ message: "User not found" });
+
+    await db.update(users).set({ failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, existing.id));
+    await db.insert(auditLogs).values({
+      actorUserId: request.currentUser!.id,
+      action: "user.unlock",
+      entityType: "user",
+      entityId: existing.id,
+      metadata: { old: { lockedUntil: existing.lockedUntil, failedLoginCount: existing.failedLoginCount } },
+    });
+    return reply.send({ data: { userId: existing.id } });
   });
 }

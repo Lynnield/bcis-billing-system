@@ -108,6 +108,10 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   status: userStatusEnum("status").notNull().default("active"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: "date" }),
+  // Failed-login lockout (spec 4.4): consecutive failures since the last
+  // successful login, and the time until which login is refused.
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true, mode: "date" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (t) => [

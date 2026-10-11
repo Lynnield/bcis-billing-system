@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
-import { getUsers, getRoles, updateUser } from "@/lib/user-api";
+import { getUsers, getRoles, unlockUser, updateUser } from "@/lib/user-api";
 import { UserForm } from "./UserForm";
 import { ManageUserModal } from "./ManageUserModal";
 import type { UserListRow, UserAccountStatus } from "@/shared/types";
-import { Plus, Settings2, Ban, CheckCircle2 } from "lucide-react";
+import { Plus, Settings2, Ban, CheckCircle2, LockOpen } from "lucide-react";
 
 const statusBadgeVariant: Record<UserAccountStatus, "success" | "secondary"> = {
   active: "success",
@@ -41,6 +41,15 @@ export function UserManagementPage() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err: unknown) => showError("Failed to update status", err instanceof Error ? err.message : "Unknown error"),
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: (id: number) => unlockUser(id),
+    onSuccess: () => {
+      showSuccess("Account unlocked");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err: unknown) => showError("Failed to unlock", err instanceof Error ? err.message : "Unknown error"),
   });
 
   const users = usersData?.users ?? [];
@@ -115,10 +124,29 @@ export function UserManagementPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusBadgeVariant[u.status]}>{u.status}</Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={statusBadgeVariant[u.status]}>{u.status}</Badge>
+                      {u.lockedUntil && (
+                        <Badge variant="destructive" title={`Locked until ${new Date(u.lockedUntil).toLocaleString()}`}>
+                          locked
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
+                      {u.lockedUntil && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => unlockMutation.mutate(u.id)}
+                          disabled={unlockMutation.isPending}
+                          aria-label={`Unlock ${u.username}`}
+                          title="Clear the failed-login lock"
+                        >
+                          <LockOpen className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="outline" size="icon" onClick={() => setManagingUser(u)} aria-label={`Manage ${u.username}`}>
                         <Settings2 className="h-4 w-4" />
                       </Button>

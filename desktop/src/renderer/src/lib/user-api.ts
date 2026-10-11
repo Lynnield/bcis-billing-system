@@ -35,3 +35,7 @@ export async function updateUserRoles(id: number, data: UpdateUserRolesRequest):
 export async function resetUserPassword(id: number, data: ResetPasswordRequest): Promise<{ data: { userId: number } }> {
   return window.bcis.users.resetPassword(id, data);
 }
+
+export async function unlockUser(id: number): Promise<{ data: { userId: number } }> {
+  return window.bcis.users.unlock(id);
+}

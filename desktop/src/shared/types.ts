@@ -1052,6 +1052,9 @@ export interface UserListRow {
   fullName: string;
   status: UserAccountStatus;
   roles: string[];
+  lastLoginAt: string | null;
+  /** Set only while a failed-login lock is in force. */
+  lockedUntil: string | null;
   createdAt: string;
 }
 
@@ -1404,6 +1407,8 @@ export interface BcisDesktopApi {
     updateRoles: (id: number, data: UpdateUserRolesRequest) => Promise<UserDetailResponse>;
     /** Reset a user's password. Owner only. */
     resetPassword: (id: number, data: ResetPasswordRequest) => Promise<{ data: { userId: number } }>;
+    /** Clear a failed-login lock. Owner only. */
+    unlock: (id: number) => Promise<{ data: { userId: number } }>;
   };
   settings: {
     /** Read the configurable grace period / suspension threshold. */

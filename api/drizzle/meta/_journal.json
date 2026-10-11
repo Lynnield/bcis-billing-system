@@ -57,6 +57,13 @@
       "when": 1791707791905,
       "tag": "0007_payment_proofs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791708680079,
+      "tag": "0008_login_lockout",
+      "breakpoints": true
     }
   ]
 }
