@@ -32,6 +32,7 @@ export interface InvoiceBalanceRow {
   dueDate: Date;
   serviceAccountId: number;
   subscriberId: number;
+  accountStatus: string;
   allocated: string;
   balanceCents: bigint;
 }
@@ -61,6 +62,7 @@ export async function getInvoiceBalances(options?: {
       dueDate: invoices.dueDate,
       serviceAccountId: invoices.serviceAccountId,
       subscriberId: serviceAccounts.subscriberId,
+      accountStatus: serviceAccounts.status,
       allocated: sql<string>`coalesce(sum(case when ${payments.status} = 'posted' then ${paymentAllocations.amount} else 0 end), 0)::numeric(14,2)`,
     })
     .from(invoices)
@@ -68,7 +70,7 @@ export async function getInvoiceBalances(options?: {
     .leftJoin(paymentAllocations, eq(paymentAllocations.invoiceId, invoices.id))
     .leftJoin(payments, eq(payments.id, paymentAllocations.paymentId))
     .where(where)
-    .groupBy(invoices.id, serviceAccounts.subscriberId);
+    .groupBy(invoices.id, serviceAccounts.subscriberId, serviceAccounts.status);
 
   return rows.map((r) => {
     const balanceCents = (parseMoneyToCents(r.totalAmount) ?? 0n) - (parseMoneyToCents(r.allocated) ?? 0n);

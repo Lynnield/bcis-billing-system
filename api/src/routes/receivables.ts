@@ -166,12 +166,14 @@ export default async function receivableRoutes(app: FastifyInstance): Promise<vo
   });
 
   app.get("/api/v1/receivables/suspension-candidates", { preHandler: [authenticate, requirePermission("receivable.view")] }, async (request, reply) => {
-    // Explicit rule: an account is a candidate when it has at least one
-    // outstanding invoice whose due date is before today (overdue).
+    // Explicit rule: an active account is a candidate when it has at least
+    // one outstanding invoice whose due date is before today (overdue).
+    // Already-suspended (or otherwise inactive) accounts drop out.
     const rows = await getInvoiceBalances();
     const byAccount = new Map<number, { overdue: bigint; invoices: typeof rows }>();
 
     for (const r of rows) {
+      if (r.accountStatus !== "active") continue;
       if (r.balanceCents <= 0n || !isOverdue(daysOverdue(r.dueDate))) continue;
       const entry = byAccount.get(r.serviceAccountId) ?? { overdue: 0n, invoices: [] as typeof rows };
       entry.overdue += r.balanceCents;

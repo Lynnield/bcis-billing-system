@@ -2,6 +2,9 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -192,11 +195,22 @@ function SuspensionCandidatesTab() {
     queryFn: getSuspensionCandidates,
   });
 
+  // Account being suspended; null while the confirmation modal is closed.
+  const [suspendTarget, setSuspendTarget] = React.useState<number | null>(null);
+  const [suspendReason, setSuspendReason] = React.useState("");
+  const [suspendNotes, setSuspendNotes] = React.useState("");
+
   const suspendMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => suspendServiceAccount(id, { reason }),
+    mutationFn: (id: number) =>
+      suspendServiceAccount(id, { reason: suspendReason.trim() || undefined, notes: suspendNotes.trim() || undefined }),
     onSuccess: (result) => {
       showSuccess("Service account suspended", result.message);
+      setSuspendTarget(null);
+      setSuspendReason("");
+      setSuspendNotes("");
       queryClient.invalidateQueries({ queryKey: ["suspension-candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["service-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["service-account"] });
     },
     onError: (err: unknown) => showError("Failed to suspend", err instanceof Error ? err.message : "Unknown error"),
   });
@@ -254,12 +268,13 @@ function SuspensionCandidatesTab() {
                     variant="destructive"
                     size="sm"
                     disabled={suspendMutation.isPending}
-                    onClick={() => {
-                      const reason = prompt("Reason for suspension (optional):");
-                      if (reason !== null) suspendMutation.mutate({ id: c.serviceAccountId, reason });
-                    }}
+                    onClick={() => setSuspendTarget(c.serviceAccountId)}
                   >
-                    {suspendMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />}
+                    {suspendMutation.isPending && suspendTarget === c.serviceAccountId ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
+                    )}
                     Suspend
                   </Button>
                 </TableCell>
@@ -268,6 +283,32 @@ function SuspensionCandidatesTab() {
           )}
         </TableBody>
       </Table>
+
+      <Modal
+        open={suspendTarget !== null}
+        onClose={() => !suspendMutation.isPending && setSuspendTarget(null)}
+        title={`Suspend Service Account ${suspendTarget ?? ""}`}
+        description="This records a suspension entry with your identity and timestamp for audit."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setSuspendTarget(null)} disabled={suspendMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => suspendTarget !== null && suspendMutation.mutate(suspendTarget)}
+              disabled={suspendMutation.isPending}
+            >
+              {suspendMutation.isPending ? "Suspending..." : "Confirm Suspension"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input label="Reason" value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)} placeholder="e.g. Two months overdue" />
+          <Textarea label="Notes" value={suspendNotes} onChange={(e) => setSuspendNotes(e.target.value)} placeholder="Optional additional context" rows={3} />
+        </div>
+      </Modal>
     </div>
   );
 }

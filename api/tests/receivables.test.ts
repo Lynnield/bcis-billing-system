@@ -263,6 +263,11 @@ describe("receivables", () => {
     expect(suspended.statusCode).toBe(200);
     expect(suspended.json().data.status).toBe("suspended");
 
+    // A suspended account is no longer a suspension candidate.
+    const candidates = await app.inject({ method: "GET", url: "/api/v1/receivables/suspension-candidates", headers: auth(tokens.ar_viewer!) });
+    const candidateIds = candidates.json().data.map((c: { serviceAccountId: number }) => c.serviceAccountId);
+    expect(candidateIds).not.toContain(accountId);
+
     const againSuspended = await app.inject({ method: "PATCH", url: `/api/v1/service-accounts/${accountId}/suspend`, headers: auth(tokens.ar_super!), payload: {} });
     expect(againSuspended.statusCode).toBe(409);
 
