@@ -293,7 +293,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       .leftJoin(collectors, eq(collectors.id, collectionBatches.collectorId))
       .where(where)
       .orderBy(payments.paymentDate, payments.id)
-      .limit(500);
+      .limit(50_000);
 
     return reply.send({
       data: {
@@ -339,7 +339,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       .leftJoin(collectors, eq(collectors.id, collectionBatches.collectorId))
       .where(where)
       .orderBy(payments.paymentDate, payments.id)
-      .limit(500);
+      .limit(50_000);
 
     return sendExport(reply, "collection-report", fmt.data.format, {
       title: "Collection Report",

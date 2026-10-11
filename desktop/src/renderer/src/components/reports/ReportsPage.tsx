@@ -1,11 +1,12 @@
 import * as React from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/lib/toast";
 import { exportReport } from "@/lib/report-api";
 import type { ReportExportFormat } from "@/shared/types";
 import { FileDown, FileSpreadsheet, FileText } from "lucide-react";
+import { ManagementReport } from "./ManagementReport";
 
 interface ReportParams {
   serviceAccountId: string;
@@ -94,10 +95,14 @@ const REPORT_DEFS: ReportDef[] = [
 
 export function ReportsPage() {
   const { success: showSuccess, error: showError, info: showInfo } = useToast();
+  const { data: catalogData } = useQuery({ queryKey: ["report-catalog"], queryFn: () => window.bcis.reports.getCatalog() });
+  const catalog = catalogData?.data ?? [];
+  // "m:<slug>" selects a management report; anything else a statement/export.
   const [selectedKey, setSelectedKey] = React.useState(REPORT_DEFS[0]!.key);
+  const selectedManagement = selectedKey.startsWith("m:") ? catalog.find((c) => `m:${c.slug}` === selectedKey) : undefined;
   const [params, setParams] = React.useState<ReportParams>({ serviceAccountId: "", dateFrom: "", dateTo: "" });
 
-  const selected = REPORT_DEFS.find((r) => r.key === selectedKey)!;
+  const selected = REPORT_DEFS.find((r) => r.key === selectedKey) ?? REPORT_DEFS[0]!;
 
   const exportMutation = useMutation({
     mutationFn: (format: ReportExportFormat) => exportReport(selected.buildPath(params, format), format, selected.suggestedName(format)),
@@ -121,7 +126,22 @@ export function ReportsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-        <div className="rounded-lg border divide-y">
+        <div className="rounded-lg border divide-y self-start">
+          {catalog.length > 0 && (
+            <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40">Management reports</p>
+          )}
+          {catalog.map((c) => (
+            <button
+              key={c.slug}
+              onClick={() => setSelectedKey(`m:${c.slug}`)}
+              className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                selectedKey === `m:${c.slug}` ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted/60"
+              }`}
+            >
+              {c.title}
+            </button>
+          ))}
+          <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40">Statements &amp; summaries</p>
           {REPORT_DEFS.map((r) => (
             <button
               key={r.key}
@@ -135,6 +155,11 @@ export function ReportsPage() {
           ))}
         </div>
 
+        {selectedManagement ? (
+          <div className="rounded-lg border p-6">
+            <ManagementReport key={selectedManagement.slug} report={selectedManagement} />
+          </div>
+        ) : (
         <div className="rounded-lg border p-6 space-y-4">
           <div>
             <h3 className="font-medium">{selected.label}</h3>
@@ -194,6 +219,7 @@ export function ReportsPage() {
             </p>
           )}
         </div>
+        )}
       </div>
     </div>
   );

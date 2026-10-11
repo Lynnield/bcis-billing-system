@@ -41,6 +41,9 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  ReportCatalogEntry,
+  ReportRunParams,
+  ReportRunResult,
   AuditLogQuery,
   AuditLogListResponse,
   AllocationPreview,
@@ -303,6 +306,8 @@ const api: BcisDesktopApi = {
     export: (request: ReportExportRequest): Promise<ReportExportResult> => ipcRenderer.invoke("reports:export", request),
     getLedger: (serviceAccountId: number): Promise<LedgerResponse> => ipcRenderer.invoke("reports:get-ledger", serviceAccountId),
     getSoa: (serviceAccountId: number): Promise<SoaResponse> => ipcRenderer.invoke("reports:get-soa", serviceAccountId),
+    getCatalog: (): Promise<{ data: ReportCatalogEntry[] }> => ipcRenderer.invoke("reports:get-catalog"),
+    run: (slug: string, params: ReportRunParams): Promise<{ data: ReportRunResult }> => ipcRenderer.invoke("reports:run", { slug, params }),
   },
   audit: {
     getList: (params: AuditLogQuery): Promise<AuditLogListResponse> => ipcRenderer.invoke("audit:get-list", params),

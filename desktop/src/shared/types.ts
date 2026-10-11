@@ -852,6 +852,30 @@ export interface AuditLogListResponse {
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
+export interface ReportCatalogEntry {
+  slug: string;
+  title: string;
+  description: string;
+  params: Array<"dateFrom" | "dateTo" | "period" | "groupBy" | "collectorId" | "collectionAreaId">;
+}
+
+export interface ReportRunParams {
+  dateFrom?: string;
+  dateTo?: string;
+  period?: "day" | "week" | "month" | "year";
+  groupBy?: "plan" | "service" | "area";
+  collectorId?: number;
+  collectionAreaId?: number;
+}
+
+export interface ReportRunResult {
+  title: string;
+  subtitle: string;
+  columns: Array<{ key: string; header: string; align?: "left" | "right" | "center" }>;
+  rows: Array<Record<string, string | number>>;
+  totals?: Record<string, string | number>;
+}
+
 export interface SearchHit {
   kind: "service_account" | "invoice" | "payment";
   matchedOn: string;
@@ -1449,6 +1473,10 @@ export interface BcisDesktopApi {
     getLedger: (serviceAccountId: number) => Promise<LedgerResponse>;
     /** Statement of Account (outstanding invoices + totals) for one service account. */
     getSoa: (serviceAccountId: number) => Promise<SoaResponse>;
+    /** Management reports this user may run (spec 3.11). */
+    getCatalog: () => Promise<{ data: ReportCatalogEntry[] }>;
+    /** Run a management report for on-screen display. */
+    run: (slug: string, params: ReportRunParams) => Promise<{ data: ReportRunResult }>;
   };
   paymentProofs: {
     /** Pick a PNG/JPEG/WEBP/PDF (max 5 MB) and upload it to the server. Null if cancelled. */

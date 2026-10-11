@@ -21,6 +21,7 @@ import backupRoutes from "./routes/backup";
 import settingsRoutes from "./routes/settings";
 import searchRoutes from "./routes/search";
 import auditRoutes from "./routes/audit";
+import managementReportRoutes from "./routes/management-reports";
 import type { AuthUser } from "./lib/auth";
 
 declare module "fastify" {
@@ -60,6 +61,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(settingsRoutes);
   await app.register(searchRoutes);
   await app.register(auditRoutes);
+  await app.register(managementReportRoutes);
 
   return app;
 }

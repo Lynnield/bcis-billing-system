@@ -35,6 +35,9 @@ import type {
   InvoiceListResponse,
   InvoiceDetailResponse,
   SearchHit,
+  ReportCatalogEntry,
+  ReportRunParams,
+  ReportRunResult,
   AuditLogQuery,
   AuditLogListResponse,
   AllocationPreview,
@@ -401,6 +404,22 @@ function registerIpcHandlers(): void {
     const token = await getStoredToken();
     if (!token) throw new Error("No valid session");
     return apiRequest<{ data: string[] }>("/api/v1/audit-logs/actions", { method: "GET", token });
+  });
+
+  ipcMain.handle("reports:get-catalog", async (): Promise<{ data: ReportCatalogEntry[] }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    return apiRequest<{ data: ReportCatalogEntry[] }>("/api/v1/reports/catalog", { method: "GET", token });
+  });
+
+  ipcMain.handle("reports:run", async (_event, payload: unknown): Promise<{ data: ReportRunResult }> => {
+    const token = await getStoredToken();
+    if (!token) throw new Error("No valid session");
+    const { slug, params } = payload as { slug: string; params: ReportRunParams };
+    if (!/^[a-z-]+$/.test(String(slug))) throw new Error("Invalid report");
+    const query = new URLSearchParams();
+    for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== "") query.set(k, String(v));
+    return apiRequest<{ data: ReportRunResult }>(`/api/v1/reports/run/${slug}?${query.toString()}`, { method: "GET", token });
   });
 
   ipcMain.handle("search:query", async (_event, q: unknown): Promise<{ data: SearchHit[] }> => {
@@ -1417,6 +1436,10 @@ function registerIpcHandlers(): void {
       throw new Error("No valid session");
     }
     const { path, format, suggestedName } = payload as { path: string; format: "pdf" | "xlsx"; suggestedName: string };
+    // Keep this channel narrow: it may only fetch report exports.
+    if (typeof path !== "string" || !/^\/api\/v1\/reports\/[\w/-]+\/export\?[\w=&.%-]*$/.test(path)) {
+      throw new Error("Invalid report export path");
+    }
 
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
