@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildApp } from "../src/app";
 import { db, pool } from "../src/db";
 import {
-  auditLogs,
   billingPeriods,
   collectionBatches,
   collectionBatchPayments,
@@ -37,7 +36,6 @@ const createdPaymentIds: number[] = [];
 const createdBatchIds: number[] = [];
 const createdCollectorIds: number[] = [];
 const tokens: Record<string, string> = {};
-let collectorId: number;
 let serviceAccountId: number;
 
 function uid(prefix: string) {
@@ -90,21 +88,6 @@ async function mkInvoice(accountId2: number, periodId2: number, amount: string, 
   const [inv] = await db.insert(invoices).values({ invoiceNumber: uid("INV-R"), serviceAccountId: accountId2, billingPeriodId: periodId2, issueDate: new Date(), dueDate, status: "unpaid", totalAmount: amount }).returning();
   createdInvoiceIds.push(inv!.id);
   return inv!;
-}
-
-async function mkPostedPayment(accountId2: number, amount: string) {
-  const [pay] = await db.insert(payments).values({ serviceAccountId: serviceAccountId, method: "cash", amount, paymentDate: new Date(), status: "posted" }).returning();
-  return pay!;
-}
-
-function auth(t: string) {
-  return { authorization: `Bearer ${t}` };
-}
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
 }
 
 beforeAll(async () => {

@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { CollectionAreaForm } from "./CollectionAreaForm";
-import { useToast } from "@/lib/toast";
 import { Plus, Eye, Loader2 } from "lucide-react";
 import { getCollectionAreas } from "@/lib/collection-area-api";
 import { CollectionArea, CollectionAreaStatus } from "@/shared/types";
@@ -24,7 +23,6 @@ const statusBadgeVariant: Record<CollectionAreaStatus, "default" | "success" | "
 
 export function CollectionAreaList() {
   const queryClient = useQueryClient();
-  const { } = useToast();
 
   const [statusFilter, setStatusFilter] = React.useState<CollectionAreaStatus | "all">("all");
   const [search, setSearch] = React.useState("");

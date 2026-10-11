@@ -10,7 +10,6 @@ import { ServiceAccountForm } from "./ServiceAccountForm";
 import { ServiceAccountDetail as ServiceAccountDetailView } from "./ServiceAccountDetail";
 import { LedgerView } from "./LedgerView";
 import { StatementOfAccountView } from "./StatementOfAccountView";
-import { useToast } from "@/lib/toast";
 import {
   Search,
   Plus,
@@ -33,7 +32,6 @@ const statusBadgeVariant: Record<ServiceAccountStatus, "default" | "success" | "
 
 export function ServiceAccountList() {
   const queryClient = useQueryClient();
-  const { } = useToast();
 
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);

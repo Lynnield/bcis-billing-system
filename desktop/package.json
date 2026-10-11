@@ -17,7 +17,8 @@
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
-    "dist:dir": "electron-vite build && electron-builder --dir"
+    "dist:dir": "electron-vite build && electron-builder --dir",
+    "lint": "eslint ."
   },
   "build": {
     "appId": "com.bcis.billing",
@@ -32,7 +33,12 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },
@@ -63,6 +69,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
+    "@eslint/js": "^9.39.5",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^24.7.0",
     "@types/react": "^19.2.2",
@@ -72,8 +79,12 @@
     "electron": "^44.0.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.13.0",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
     "vite": "^7.1.9",
     "vitest": "^2.1.8"
   }

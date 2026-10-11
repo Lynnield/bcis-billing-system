@@ -1,7 +1,7 @@
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { invoices, paymentAllocations, payments, serviceAccounts } from "../db/schema";
-import { formatCents, parseMoneyToCents } from "./money";
+import { parseMoneyToCents } from "./money";
 
 export const AGING_BUCKETS = ["current", "1-30", "31-60", "61-90", "90+"] as const;
 export type AgingBucket = (typeof AGING_BUCKETS)[number];

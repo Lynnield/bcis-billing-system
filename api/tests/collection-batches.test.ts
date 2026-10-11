@@ -173,7 +173,6 @@ describe("collection batches", () => {
   it("reversed payment cannot be added (400)", async () => {
     const batchRes = await createBatch();
     const batchId = batchRes.json().data.id;
-    const [revBatch] = await db.select().from(invoices).limit(0); // no-op
     const pay = await mkPayment("100.00");
     await db.update(payments).set({ status: "reversed" }).where(eq(payments.id, pay.id));
     const res = await app.inject({ method: "POST", url: `/api/v1/collection-batches/${batchId}/payments`, headers: auth(tokens.cb_cashier!), payload: { paymentId: pay.id } });

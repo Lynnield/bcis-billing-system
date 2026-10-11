@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Pagination } from "@/components/ui/Pagination";
 import { Badge } from "@/components/ui/Badge";
-import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import { getPayments } from "@/lib/payment-api";
 import { getServiceAccounts } from "@/lib/service-account-api";
@@ -44,7 +43,6 @@ const methodLabel: Record<PaymentMethod, string> = {
 
 export function PaymentList() {
   const { user } = useAuth();
-  const { } = useToast();
 
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);

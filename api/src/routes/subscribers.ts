@@ -266,7 +266,7 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
         return reply.code(400).send({ message: "Invalid status change" });
       }
 
-      try {
+      {
         const result = await db.transaction(async (tx) => {
           const [current] = await tx
             .select()
@@ -314,8 +314,6 @@ export default async function subscriberRoutes(app: FastifyInstance): Promise<vo
             .send({ message: "Subscriber already has the requested status; no change recorded" });
         }
         return reply.send({ data: result.updated });
-      } catch (err) {
-        throw err;
       }
     },
   );

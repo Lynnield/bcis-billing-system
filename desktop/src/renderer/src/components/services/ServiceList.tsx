@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ServiceForm } from "./ServiceForm";
-import { useToast } from "@/lib/toast";
 import { Plus, Eye, Layers, Loader2 } from "lucide-react";
 import { getServices } from "@/lib/service-api";
 import { Service, ServiceType, ServiceStatus } from "@/shared/types";
@@ -39,7 +38,6 @@ const typeBadgeVariant: Record<ServiceType, "default" | "success" | "warning" | 
 export function ServiceList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { } = useToast();
 
   const [statusFilter, setStatusFilter] = React.useState<ServiceStatus | "all">("all");
   const [typeFilter, setTypeFilter] = React.useState<ServiceType | "all">("all");

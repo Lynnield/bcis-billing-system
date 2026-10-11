@@ -13,7 +13,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
     "db:seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
-    "bootstrap:owner": "tsx --env-file-if-exists=.env src/db/bootstrap-owner.ts"
+    "bootstrap:owner": "tsx --env-file-if-exists=.env src/db/bootstrap-owner.ts",
+    "lint": "oxlint"
   },
   "keywords": [],
   "author": "",
@@ -35,6 +36,7 @@
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
+    "oxlint": "^1.87.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"

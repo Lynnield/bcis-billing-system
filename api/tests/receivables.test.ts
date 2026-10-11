@@ -18,7 +18,7 @@ import {
 } from "../src/db/schema";
 import { hashPassword } from "../src/lib/password";
 import { ROLE_NAMES } from "../src/lib/roles";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 
 let app: FastifyInstance;
@@ -31,9 +31,6 @@ const fixtures: Array<{ subscriberId: number; serviceId: number; planId: number 
 const tokens: Record<string, string> = {};
 let period1Id: number;
 let accountId: number;
-let subscriberId: number;
-let serviceId: number;
-let planId: number;
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -103,9 +100,6 @@ beforeAll(async () => {
   await mkUser("ar_viewer", ROLE_NAMES.READ_ONLY_VIEWER);
 
   const fx = await mkFixture();
-  subscriberId = fx.subscriberId;
-  serviceId = fx.serviceId;
-  planId = fx.planId;
   accountId = fx.accountId;
   const p = await mkPeriodUnique();
   period1Id = p.id;

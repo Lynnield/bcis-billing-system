@@ -3,8 +3,6 @@ import { z } from "zod";
 import { and, desc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
-  auditLogs,
-  billingPeriods,
   collectionAreas,
   collectionBatchPayments,
   collectionBatches,
@@ -231,7 +229,7 @@ async function statementForRange(serviceAccountId: number, dateFrom?: string, da
   return { opening, closing, charges, credits, entries };
 }
 
-function dateRangeQuery(where: string) {
+function dateRangeQuery() {
   return z.object({
     dateFrom: dateString.optional(),
     dateTo: dateString.optional(),
@@ -247,7 +245,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // A. COLLECTION REPORT
   // ------------------------------------------------------------------
   app.get("/api/v1/reports/collections", { preHandler: [authenticate, requirePermission("report.view")] }, async (request, reply) => {
-    const parsed = dateRangeQuery("").safeParse(request.query);
+    const parsed = dateRangeQuery().safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { dateFrom, dateTo, paymentMethod, collectorId, collectionAreaId } = parsed.data;
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -336,7 +334,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   app.get("/api/v1/reports/collections/export", { preHandler: [authenticate, requirePermission("report.export")] }, async (request, reply) => {
     const fmt = exportFormatSchema.safeParse(request.query);
     if (!fmt.success) return reply.code(400).send({ message: "format must be pdf or xlsx" });
-    const parsed = dateRangeQuery("").safeParse(request.query);
+    const parsed = dateRangeQuery().safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ message: "Invalid query parameters" });
     const { dateFrom, dateTo, paymentMethod, collectorId, collectionAreaId } = parsed.data;
 

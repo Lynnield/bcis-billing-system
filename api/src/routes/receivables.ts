@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AGING_BUCKETS, bucketFor, daysOverdue, getInvoiceBalances, todayDateString } from "../lib/receivables";
+import { AGING_BUCKETS, bucketFor, daysOverdue, getInvoiceBalances } from "../lib/receivables";
 import { formatCents } from "../lib/money";
 import { authenticate } from "../lib/auth";
 import { requirePermission } from "../lib/permissions";

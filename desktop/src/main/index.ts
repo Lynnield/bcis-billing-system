@@ -229,7 +229,7 @@ function decryptToken(encryptedBase64: string): string {
 }
 
 // In-memory store for user identity (not sensitive, but kept in main process)
-let memoryStore = new Map<string, unknown>();
+const memoryStore = new Map<string, unknown>();
 
 function setInMemory(key: string, value: unknown): void {
   memoryStore.set(key, value);

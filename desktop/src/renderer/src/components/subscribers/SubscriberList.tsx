@@ -8,7 +8,6 @@ import { Select } from "@/components/ui/Select";
 import { Pagination } from "@/components/ui/Pagination";
 import { Badge } from "@/components/ui/Badge";
 import { SubscriberForm } from "./SubscriberForm";
-import { useToast } from "@/lib/toast";
 import {
   Search,
   Plus,
@@ -39,7 +38,6 @@ const statusBadgeVariant: Record<SubscriberStatus, "default" | "success" | "warn
 export function SubscriberList({ openCreate = false }: { openCreate?: boolean } = {}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { } = useToast();
 
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);

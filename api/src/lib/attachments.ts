@@ -39,6 +39,8 @@ export function resolveStoredPath(storedName: string): string {
 /** Display-only name: basename, control characters stripped, length-capped. */
 export function sanitizeOriginalName(name: string): string {
   const base = path.basename(name.replace(/\\/g, "/"));
+  // Stripping control characters is the point of this pattern.
+  // oxlint-disable-next-line no-control-regex
   const cleaned = base.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "").trim();
   return (cleaned || "proof").slice(0, 255);
 }
