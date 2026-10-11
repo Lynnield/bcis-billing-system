@@ -18,7 +18,9 @@
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:dir": "electron-vite build && electron-builder --dir",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e": "electron-vite build && playwright test",
+    "e2e:only": "playwright test"
   },
   "build": {
     "appId": "com.bcis.billing",
@@ -70,6 +72,7 @@
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^24.7.0",
     "@types/react": "^19.2.2",

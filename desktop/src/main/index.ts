@@ -241,6 +241,13 @@ function deleteFromMemory(key: string): void {
 
 // Persistent encrypted token storage using electron-store for the encrypted blob
 import Store from "electron-store";
+
+// Automated end-to-end tests run the app with an isolated profile so a
+// saved server address or session from normal use can never leak in.
+// Must run before the store below is created.
+if (process.env.BCIS_USER_DATA_DIR) {
+  app.setPath("userData", process.env.BCIS_USER_DATA_DIR);
+}
 const persistentStore = new Store({
   name: "bcis-auth",
   clearInvalidConfig: true,
