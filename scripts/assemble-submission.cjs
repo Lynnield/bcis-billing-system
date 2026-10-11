@@ -36,7 +36,8 @@ const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=n
 if (dirty) console.warn("warning: uncommitted changes are NOT in source/ (it is taken from HEAD):\n" + dirty);
 const tarFile = path.join(OUT, "source.tar");
 execFileSync("git", ["archive", "--format=tar", "-o", tarFile, "HEAD"], { cwd: ROOT });
-execFileSync("tar", ["-xf", tarFile, "-C", path.join(OUT, "source")]);
+// Relative paths: GNU tar would read "C:\..." as a remote host:path.
+execFileSync("tar", ["-xf", path.join("..", "source.tar")], { cwd: path.join(OUT, "source") });
 fs.rmSync(tarFile);
 
 // database/
